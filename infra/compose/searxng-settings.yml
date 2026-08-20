@@ -1,0 +1,29 @@
+# SearXNG settings for the zhiban personal assistant.
+# Enables the JSON output format used by SearXNGAdapter.
+use_default_settings: true
+
+server:
+  secret_key: "zhiban-local-searxng-secret-change-me"
+  limiter: false
+  image_proxy: false
+  port: 8080
+  bind_address: "0.0.0.0"
+
+search:
+  formats:
+    - html
+    - json
+  safe_search: 0
+  autocomplete: ""
+  default_lang: "zh-CN"
+
+engines:
+  # Keep a small set of reliable, no-API-key engines.
+  - name: bing
+    disabled: false
+  - name: duckduckgo
+    disabled: false
+  - name: google
+    disabled: false
+  - name: wikipedia
+    disabled: false

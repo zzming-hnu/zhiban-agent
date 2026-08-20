@@ -1,0 +1,91 @@
+"""Memory Flush: extract stable history into memories before compaction."""
+
+import uuid
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from zhiban.db.models import Conversation, Message
+from zhiban.llm.base import LLMAdapter
+from zhiban.memory.extractor import EXTRACTOR_VERSION, extract_candidates
+from zhiban.memory.service import MemoryService
+
+
+async def flush_conversation_memory(
+    session: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+    llm: LLMAdapter,
+) -> bool:
+    """Extract memories from messages after the flush cursor.
+
+    Returns True on success (cursor advanced or nothing to do); False on failure.
+    """
+    conv = (
+        await session.execute(
+            select(Conversation).where(
+                Conversation.id == conversation_id,
+                Conversation.user_id == user_id,
+                Conversation.status != "deleted",
+            )
+        )
+    ).scalar_one_or_none()
+    if conv is None:
+        return True
+
+    # Load user messages after the flush cursor (or all if none).
+    query = select(Message).where(
+        Message.conversation_id == conversation_id,
+        Message.user_id == user_id,
+        Message.role == "user",
+        Message.deleted_at.is_(None),
+    )
+    if conv.memory_flushed_through_message_id is not None:
+        query = query.where(
+            Message.created_at
+            > select(Message.created_at)
+            .where(Message.id == conv.memory_flushed_through_message_id)
+            .scalar_subquery()
+        )
+    query = query.order_by(Message.created_at.asc()).limit(20)
+    messages = list((await session.execute(query)).scalars())
+
+    if not messages:
+        return True
+
+    # Extract candidates from user messages.
+    indexed = [(i, m.content) for i, m in enumerate(messages)]
+    try:
+        candidates = await extract_candidates(llm, indexed)
+    except Exception:  # noqa: BLE001 - flush is best-effort
+        return False
+
+    # Map message index back to message id.
+    id_by_index = {i: m.id for i, m in enumerate(messages)}
+    text_by_id = {m.id: m.content for m in messages}
+
+    service = MemoryService(session)
+    for candidate in candidates:
+        source_ids: list[uuid.UUID] = []
+        for i in candidate.source_message_ids:
+            sid = id_by_index.get(int(i))
+            if sid is not None:
+                source_ids.append(sid)
+        if not source_ids:
+            continue
+        candidate.source_message_ids = source_ids
+        # Determine source kind per candidate is not straightforward here;
+        # use implicit (extraction context) by default.
+        await service.process_candidate(
+            user_id=user_id,
+            candidate=candidate,
+            source_kind="implicit",
+            extractor_version=EXTRACTOR_VERSION,
+            available_message_ids=set(text_by_id.keys()),
+            available_message_texts=text_by_id,
+        )
+
+    # Advance the flush cursor to the last processed message.
+    conv.memory_flushed_through_message_id = messages[-1].id
+    await session.commit()
+    return True

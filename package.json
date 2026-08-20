@@ -1,0 +1,17 @@
+{
+  "name": "zhiban",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Spec-driven AI personal assistant project",
+  "packageManager": "pnpm@11.22.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "corepack pnpm -r --parallel --if-present dev",
+    "build": "corepack pnpm -r --if-present build",
+    "lint": "corepack pnpm -r --if-present lint",
+    "typecheck": "corepack pnpm -r --if-present typecheck",
+    "test": "corepack pnpm -r --if-present test"
+  }
+}

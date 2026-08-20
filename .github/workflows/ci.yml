@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_DB: zhiban
+          POSTGRES_USER: zhiban
+          POSTGRES_PASSWORD: zhiban_ci_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U zhiban -d zhiban"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+      redis:
+        image: redis:7.4-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+
+    env:
+      APP_ENV: test
+      APP_VERSION: ci
+      WEB_ORIGIN: http://localhost:3000
+      SESSION_SECRET: ci-session-secret-at-least-32-characters
+      DATABASE_URL: postgresql+asyncpg://zhiban:zhiban_ci_only@localhost:5432/zhiban
+      REDIS_URL: redis://localhost:6379/0
+      LLM_PROVIDER: mock
+      SEARCH_PROVIDER: mock
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.1
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Set up uv and Python
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.11.11"
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Run CI-equivalent checks
+        run: make ci
