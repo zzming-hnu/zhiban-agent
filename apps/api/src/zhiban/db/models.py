@@ -320,7 +320,7 @@ class Memory(Base):
     importance: Mapped[float] = mapped_column(nullable=False, default=0.5)
     fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
     conflict_key: Mapped[str] = mapped_column(String(64), nullable=False)
-    embedding: Mapped[list[float] | None] = mapped_column(Vector(1536), nullable=True)
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(1024), nullable=True)
     source_message_ids: Mapped[list[uuid.UUID]] = mapped_column(
         "source_message_ids", JSONB, nullable=False, default=list
     )

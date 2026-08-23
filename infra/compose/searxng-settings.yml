@@ -18,12 +18,11 @@ search:
   default_lang: "zh-CN"
 
 engines:
-  # Keep a small set of reliable, no-API-key engines.
-  - name: bing
+  # Keep a small set of reliable, no-API-key engines reachable from CN networks.
+  # google/bing are removed: they frequently time out behind CN network egress.
+  - name: baidu
     disabled: false
   - name: duckduckgo
-    disabled: false
-  - name: google
     disabled: false
   - name: wikipedia
     disabled: false
