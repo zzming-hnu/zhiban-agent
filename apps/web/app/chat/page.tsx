@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   BookMarked,
+  Brain,
   Check,
   ChevronDown,
   ListTodo,
@@ -28,6 +29,7 @@ import {
   logout,
   type ConversationResponse,
   type ModelView,
+  type RetrievedMemory,
 } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -63,6 +65,7 @@ interface DisplayMessage {
   status: string;
   thinking?: boolean;
   toolCalls?: ToolCallView[];
+  retrievedMemories?: RetrievedMemory[];
 }
 
 export default function ChatPage() {
@@ -251,6 +254,16 @@ export default function ChatPage() {
           return updated;
         });
       },
+      (memories) => {
+        setMessages((prev) => {
+          const updated = [...prev];
+          const last = updated[updated.length - 1];
+          if (last && last.role === "assistant") {
+            updated[updated.length - 1] = { ...last, retrievedMemories: memories };
+          }
+          return updated;
+        });
+      },
     );
   }
 
@@ -392,6 +405,22 @@ export default function ChatPage() {
                           : "border border-border bg-card text-foreground"
                       }`}
                     >
+                      {msg.retrievedMemories && msg.retrievedMemories.length > 0 && (
+                        <div className="mb-2 rounded-lg border border-indigo-100 bg-indigo-50/60 px-2.5 py-1.5 text-xs">
+                          <div className="mb-1 flex items-center gap-1.5 font-medium text-indigo-700">
+                            <Brain className="h-3 w-3" />
+                            召回了 {msg.retrievedMemories.length} 条相关记忆
+                          </div>
+                          {msg.retrievedMemories.map((rm, i) => (
+                            <div key={i} className="mt-1 flex items-start justify-between gap-2">
+                              <span className="truncate text-indigo-900/80">· {rm.content}</span>
+                              <span className="shrink-0 font-mono text-[10px] text-indigo-500">
+                                相关度 {(rm.score * 100).toFixed(0)}%
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                       {msg.toolCalls && msg.toolCalls.length > 0 && (
                         <div className="mb-2 space-y-1.5">
                           {msg.toolCalls.map((tc, i) => (

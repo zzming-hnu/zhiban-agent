@@ -1,12 +1,40 @@
 """Memory candidate extraction via LLM (strict JSON output)."""
 
 import json
-from typing import Any
+from typing import Any, Literal
+
+from pydantic import BaseModel, ConfigDict, Field
 
 from zhiban.llm.base import ChatMessage, LLMAdapter
-from zhiban.memory.schemas import MemoryCandidatePayload
 
 EXTRACTOR_VERSION = "v1"
+
+
+class ExtractedCandidate(BaseModel):
+    """LLM extractor output.
+
+    ``source_message_ids`` uses the integer indices emitted by the LLM (0-based
+    within the extraction batch); the caller maps them back to real message
+    UUIDs before persisting.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    memory_type: Literal[
+        "identity", "preference", "habit", "person", "event", "task", "temporary", "communication"
+    ]
+    category: Literal["basic_info", "communication_taboo", "communication_preference", "other"] = (
+        "other"
+    )
+    subject: str = Field(min_length=1, max_length=80)
+    predicate: str = Field(min_length=1, max_length=80)
+    value: str = Field(min_length=1, max_length=500)
+    source_message_ids: list[int] = Field(min_length=1, max_length=8)
+    evidence_quote: str = Field(min_length=1, max_length=240)
+    confidence: float = Field(ge=0, le=1)
+    importance: float = Field(ge=0, le=1)
+    valid_until: str | None = None
+
 
 _EXTRACTION_SYSTEM = (
     "你是记忆候选提取器。从用户消息中识别值得长期保存的稳定信息，输出严格 JSON 数组。\n"
@@ -71,8 +99,12 @@ def _parse_candidates(raw: str) -> list[dict[str, Any]]:
 
 async def extract_candidates(
     llm: LLMAdapter, messages: list[tuple[int, str]]
-) -> list[MemoryCandidatePayload]:
-    """Extract memory candidates from user messages via the LLM."""
+) -> list[ExtractedCandidate]:
+    """Extract memory candidates from user messages via the LLM.
+
+    The returned candidates keep the LLM's integer ``source_message_ids``
+    (batch-local indices); the caller maps them to real message UUIDs.
+    """
     try:
         response = await llm.chat(
             [
@@ -83,10 +115,10 @@ async def extract_candidates(
     except Exception:  # noqa: BLE001 - extraction is best-effort
         return []
 
-    candidates: list[MemoryCandidatePayload] = []
+    candidates: list[ExtractedCandidate] = []
     for item in _parse_candidates(response.content):
         try:
-            candidates.append(MemoryCandidatePayload.model_validate(item))
+            candidates.append(ExtractedCandidate.model_validate(item))
         except Exception:  # noqa: BLE001 - skip invalid candidates
             continue
     return candidates

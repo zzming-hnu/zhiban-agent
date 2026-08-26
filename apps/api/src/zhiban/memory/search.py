@@ -8,19 +8,7 @@ from datetime import UTC, datetime
 from sqlalchemy import ColumnElement, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from zhiban.db.models import Memory
-
-# Scoring weights (sum to 1.0).
-_W_VECTOR = 0.30
-_W_LEXICAL = 0.25
-_W_RECENCY = 0.15
-_W_IMPORTANCE = 0.12
-_W_CONFIDENCE = 0.10
-_W_TYPE = 0.08
-
-# Thresholds.
-MIN_VECTOR_SIMILARITY = 0.55
-MIN_FINAL_SCORE = 0.62
-MIN_MAX_SIGNAL = 0.45
+from zhiban.memory.lexical import BM25LexicalIndex, lexical_similarity
 
 # Half-lives in days per memory type (for recency decay).
 _HALF_LIFE_DAYS = {
@@ -33,6 +21,40 @@ _HALF_LIFE_DAYS = {
     "identity": 365,
     "communication": 365,
 }
+
+
+@dataclass(frozen=True, slots=True)
+class RankerConfig:
+    """Tunable scoring weights and thresholds for memory retrieval.
+
+    Exposing these as a dataclass lets an offline evaluation harness search
+    the parameter space and pick data-driven values instead of hard-coded
+    guesses.
+    """
+
+    w_vector: float = 0.30
+    w_lexical: float = 0.20
+    w_recency: float = 0.15
+    w_importance: float = 0.12
+    w_confidence: float = 0.10
+    w_type: float = 0.08
+    min_vector_similarity: float = 0.55
+    min_final_score: float = 0.45
+    min_max_signal: float = 0.20
+
+    @property
+    def weights(self) -> dict[str, float]:
+        return {
+            "vector": self.w_vector,
+            "lexical": self.w_lexical,
+            "recency": self.w_recency,
+            "importance": self.w_importance,
+            "confidence": self.w_confidence,
+            "type": self.w_type,
+        }
+
+
+DEFAULT_RANKER_CONFIG = RankerConfig()
 
 
 @dataclass(slots=True)
@@ -63,37 +85,47 @@ async def search_memories(
     query: str,
     embedding: list[float] | None,
     limit: int = 6,
+    config: RankerConfig = DEFAULT_RANKER_CONFIG,
 ) -> list[ScoredMemory]:
     """Hybrid retrieval with hard user scoping first.
 
-    Falls back to lexical + recency when ``embedding`` is None (degraded mode).
+    Falls back to lexical (jieba + BM25) + recency when ``embedding`` is None.
+    Scoring weights and thresholds come from ``config`` so an offline harness
+    can tune them against the eval set.
     """
     now = datetime.now(UTC)
+    w = config.weights
 
-    # Lexical recall (tsvector) is not yet populated via a trigger; use ILIKE
-    # on content as the lexical signal for the first version.
-    lexical_results = await session.execute(
-        select(Memory).where(*_active_scope(user_id), Memory.content.ilike(f"%{query}%")).limit(20)
+    # Load all active memories for this user, then score them in Python. The
+    # memory set per user is small (tens), so in-memory BM25 is fast and avoids
+    # the previous ILIKE substring match that failed for Chinese.
+    memories = list(
+        (await session.execute(select(Memory).where(*_active_scope(user_id)))).scalars()
     )
-    lexical_hits = {m.id: m for m in lexical_results.scalars()}
+    if not memories:
+        return []
+
+    # Build a BM25 index over memory contents for lexical scoring.
+    bm25 = BM25LexicalIndex([m.content for m in memories])
 
     scored: dict[uuid.UUID, ScoredMemory] = {}
-    query_terms = query.split()
-
-    for mem_id, mem in lexical_hits.items():
-        lexical = 1.0 if any(term.lower() in mem.content.lower() for term in query_terms) else 0.3
+    for i, mem in enumerate(memories):
+        # Lexical signal: token-overlap coverage (robust for small memory sets)
+        # blended with BM25 (better ranking when the set is larger).
+        coverage = lexical_similarity(query, mem.content)
+        bm25_norm = min(1.0, bm25.score(query, i) / 3.0)
+        lexical = max(coverage, bm25_norm)
         age_days = max(0.0, (now - mem.updated_at).total_seconds() / 86400)
         recency = _recency(age_days, mem.memory_type)
-        vector = 0.0
         score = (
-            _W_VECTOR * vector
-            + _W_LEXICAL * lexical
-            + _W_RECENCY * recency
-            + _W_IMPORTANCE * (mem.importance or 0.5)
-            + _W_CONFIDENCE * (mem.confidence or 1.0)
-            + _W_TYPE * 1.0
+            w["vector"] * 0.0
+            + w["lexical"] * lexical
+            + w["recency"] * recency
+            + w["importance"] * (mem.importance or 0.5)
+            + w["confidence"] * (mem.confidence or 1.0)
+            + w["type"] * 1.0
         )
-        scored[mem_id] = ScoredMemory(
+        scored[mem.id] = ScoredMemory(
             mem, score, {"lexical": lexical, "recency": recency, "vector": 0.0}
         )
 
@@ -106,19 +138,23 @@ async def search_memories(
             .limit(20)
         )
         for mem, distance in vector_results.all():
+            # A memory without an embedding (degraded write) yields a NULL
+            # distance; skip it rather than crash.
+            if distance is None:
+                continue
             similarity = max(0.0, 1.0 - float(distance))
-            if similarity < MIN_VECTOR_SIMILARITY:
+            if similarity < config.min_vector_similarity:
                 continue
             age_days = max(0.0, (now - mem.updated_at).total_seconds() / 86400)
             recency = _recency(age_days, mem.memory_type)
             lexical = scored[mem.id].breakdown["lexical"] if mem.id in scored else 0.0
             score = (
-                _W_VECTOR * similarity
-                + _W_LEXICAL * lexical
-                + _W_RECENCY * recency
-                + _W_IMPORTANCE * (mem.importance or 0.5)
-                + _W_CONFIDENCE * (mem.confidence or 1.0)
-                + _W_TYPE * 1.0
+                w["vector"] * similarity
+                + w["lexical"] * lexical
+                + w["recency"] * recency
+                + w["importance"] * (mem.importance or 0.5)
+                + w["confidence"] * (mem.confidence or 1.0)
+                + w["type"] * 1.0
             )
             scored[mem.id] = ScoredMemory(
                 mem, score, {"lexical": lexical, "recency": recency, "vector": similarity}
@@ -128,8 +164,8 @@ async def search_memories(
     results = [
         s
         for s in scored.values()
-        if s.score >= MIN_FINAL_SCORE
-        and max(s.breakdown["vector"], s.breakdown["lexical"]) >= MIN_MAX_SIGNAL
+        if s.score >= config.min_final_score
+        and max(s.breakdown["vector"], s.breakdown["lexical"]) >= config.min_max_signal
     ]
     results.sort(key=lambda s: s.score, reverse=True)
     return results[:limit]

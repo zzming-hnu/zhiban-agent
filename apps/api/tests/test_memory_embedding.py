@@ -12,9 +12,9 @@ from zhiban.memory.types import Decision
 
 
 class FakeEmbedding:
-    """Deterministic fake embedding adapter (matches pgvector dim 1536)."""
+    """Deterministic fake embedding adapter (matches pgvector dim 1024)."""
 
-    def __init__(self, dim: int = 1536) -> None:
+    def __init__(self, dim: int = 1024) -> None:
         self.dim = dim
         self.calls: list[str] = []
 
@@ -82,7 +82,7 @@ async def test_memory_add_generates_embedding(session: AsyncSession, clean_datab
     assert len(memories) == 1
     # Embedding was generated (non-null).
     assert memories[0].embedding is not None
-    assert len(memories[0].embedding) == 1536
+    assert len(memories[0].embedding) == 1024
     assert fake.calls  # embedding adapter was actually invoked
 
 

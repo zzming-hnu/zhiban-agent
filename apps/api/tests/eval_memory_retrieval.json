@@ -1,0 +1,78 @@
+{
+  "description": "知伴记忆检索评测集：query -> 应召回的记忆（content 列表）。覆盖语义相关、词法相关、时间衰减、重要度、以及不应召回的负例。",
+  "version": "1",
+  "memory_pool": [
+    {"id": "m001", "memory_type": "preference", "subject": "self", "predicate": "喜欢", "value": "美式咖啡不加糖", "importance": 0.8, "confidence": 0.9},
+    {"id": "m002", "memory_type": "habit", "subject": "self", "predicate": "习惯", "value": "每天早上跑步", "importance": 0.6, "confidence": 0.95},
+    {"id": "m003", "memory_type": "identity", "subject": "self", "predicate": "任职于", "value": "星辰科技", "importance": 0.9, "confidence": 0.98},
+    {"id": "m004", "memory_type": "person", "subject": "张三", "predicate": "是", "value": "我的直属领导", "importance": 0.7, "confidence": 0.9},
+    {"id": "m005", "memory_type": "event", "subject": "self", "predicate": "下周", "value": "去北京出差三天", "importance": 0.7, "confidence": 0.9},
+    {"id": "m006", "memory_type": "preference", "subject": "self", "predicate": "偏好", "value": "回答简洁一些", "importance": 0.5, "confidence": 0.85},
+    {"id": "m007", "memory_type": "temporary", "subject": "self", "predicate": "当前", "value": "正在学 Rust", "importance": 0.4, "confidence": 0.9},
+    {"id": "m008", "memory_type": "task", "subject": "self", "predicate": "待办", "value": "周五前完成产品评审 PPT", "importance": 0.6, "confidence": 0.9},
+    {"id": "m009", "memory_type": "communication", "subject": "称呼", "predicate": "要求被称呼为", "value": "小明", "importance": 0.5, "confidence": 0.9},
+    {"id": "m010", "memory_type": "preference", "subject": "self", "predicate": "喜欢", "value": "听周杰伦的歌", "importance": 0.5, "confidence": 0.85}
+  ],
+  "queries": [
+    {
+      "query": "我喝咖啡有什么偏好？",
+      "expected": ["m001"],
+      "category": "semantic",
+      "note": "语义相关：query 没有直接出现'美式''不加糖'，需靠语义/分词召回"
+    },
+    {
+      "query": "我在哪家公司上班？",
+      "expected": ["m003"],
+      "category": "semantic",
+      "note": "语义相关：'上班' vs '任职于'"
+    },
+    {
+      "query": "少糖咖啡",
+      "expected": ["m001"],
+      "category": "lexical",
+      "note": "词法相关：直接关键词命中"
+    },
+    {
+      "query": "我下周有什么安排？",
+      "expected": ["m005"],
+      "category": "semantic",
+      "note": "事件召回"
+    },
+    {
+      "query": "我喜欢喝什么？",
+      "expected": ["m001", "m010"],
+      "category": "multi",
+      "note": "多正确答案：两个偏好都可能相关"
+    },
+    {
+      "query": "我的领导是谁？",
+      "expected": ["m004"],
+      "category": "semantic",
+      "note": "人物关系召回"
+    },
+    {
+      "query": "帮我记一下待办",
+      "expected": ["m008"],
+      "category": "lexical",
+      "note": "待办召回"
+    },
+    {
+      "query": "怎么称呼我？",
+      "expected": ["m009"],
+      "category": "semantic",
+      "note": "称呼偏好召回"
+    },
+    {
+      "query": "最近在学什么新东西？",
+      "expected": ["m007"],
+      "category": "semantic",
+      "note": "临时记忆召回"
+    },
+    {
+      "query": "今天天气怎么样？",
+      "expected": [],
+      "category": "negative",
+      "note": "负例：不应召回任何记忆"
+    }
+  ]
+}

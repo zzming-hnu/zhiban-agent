@@ -1,12 +1,14 @@
 """Memory Flush: extract stable history into memories before compaction."""
 
 import uuid
+from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from zhiban.db.models import Conversation, Message
 from zhiban.llm.base import LLMAdapter
 from zhiban.memory.extractor import EXTRACTOR_VERSION, extract_candidates
+from zhiban.memory.schemas import MemoryCandidatePayload
 from zhiban.memory.service import MemoryService
 
 
@@ -66,6 +68,7 @@ async def flush_conversation_memory(
 
     service = MemoryService(session)
     for candidate in candidates:
+        # Map the LLM's batch-local integer indices back to real message UUIDs.
         source_ids: list[uuid.UUID] = []
         for i in candidate.source_message_ids:
             sid = id_by_index.get(int(i))
@@ -73,12 +76,26 @@ async def flush_conversation_memory(
                 source_ids.append(sid)
         if not source_ids:
             continue
-        candidate.source_message_ids = source_ids
+        # Rebuild a fully-validated payload with UUID source_message_ids.
+        payload = MemoryCandidatePayload(
+            memory_type=candidate.memory_type,
+            category=candidate.category,
+            subject=candidate.subject,
+            predicate=candidate.predicate,
+            value=candidate.value,
+            source_message_ids=source_ids,
+            evidence_quote=candidate.evidence_quote,
+            confidence=candidate.confidence,
+            importance=candidate.importance,
+            valid_until=datetime.fromisoformat(candidate.valid_until)
+            if candidate.valid_until
+            else None,
+        )
         # Determine source kind per candidate is not straightforward here;
         # use implicit (extraction context) by default.
         await service.process_candidate(
             user_id=user_id,
-            candidate=candidate,
+            candidate=payload,
             source_kind="implicit",
             extractor_version=EXTRACTOR_VERSION,
             available_message_ids=set(text_by_id.keys()),

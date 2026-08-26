@@ -12,11 +12,29 @@
 ## ✨ 核心能力
 
 - 🧠 **可控记忆** — 主动/自动提取记忆，按类别展示（基本信息/沟通禁忌/沟通偏好/其他），用户可编辑
+- 🔍 **可解释的语义检索** — 混合检索（向量 + 中文分词词法）+ 六因子可解释打分，换个问法也能召回，并能说明"为什么想起这条"
 - 🔧 **可靠工具调用** — Function Calling 完整链路：注册、路由、执行、幂等、审计
 - 📋 **待办与提醒** — 单次 + 周期提醒（每天/每周），站内 toast + 浏览器通知 + 邮件三路触达
-- 🔍 **联网搜索** — SearXNG 真实搜索，结果净化 + 引用
+- 🌐 **联网搜索** — 真实联网搜索，结果去重 + 来源可信度分级，优先权威信息
 - 💬 **多轮对话** — 流式输出、Markdown 渲染、上下文滚动摘要压缩
 - 🤖 **主 Agent - Subagent 架构** — 主 Agent 路由 + 管理 ReAct，Memory/Task/Search 三个专业 subagent
+
+## 🎯 深度优化亮点
+
+### 可解释的混合检索（记忆）
+
+记忆检索不是简单的关键词匹配，而是**可评估、可调优、可解释**的检索系统：
+
+- **混合召回**：向量（bge-m3 + pgvector）+ 词法（jieba 分词 + BM25），解决中文语义匹配
+- **六因子打分**：向量相似度 + 词法相关 + 时效衰减（遗忘曲线）+ 重要度 + 置信度 + 类型
+- **数据驱动调优**：建立评测集（recall@k / nDCG / MRR），网格搜索自动调参，`recall@3` 从 **0.400 → 0.900**（+125%），词法降级从 0 → 0.700
+- **可解释性**：每次召回输出各因子得分，前端展示"召回了哪些记忆 + 相关度"
+- 详见 [`docs/current/07-memory-retrieval-optimization.md`](docs/current/07-memory-retrieval-optimization.md)
+
+### 搜索质量工程
+
+- **结果去重**：URL 归一化（去 tracking 参数）+ 标题相似度判重
+- **来源可信度分级**：权威媒体（gov/edu/百科/凤凰/网易/CSDN/知乎/GitHub 等）> 社区 > 个人博客，优先采用权威信息
 
 ## 🏗️ 技术栈
 
@@ -25,11 +43,12 @@
 | 前端 | Next.js 16 · React 19 · TypeScript · Tailwind CSS v4 · shadcn/ui |
 | 后端 | Python 3.12 · FastAPI · Pydantic v2 · SQLAlchemy 2 |
 | LLM | DeepSeek（`deepseek-v4-flash` / `deepseek-v4-pro`） |
-| Embedding | `text-embedding-3-small`（1536 维） |
+| Embedding | BAAI/bge-m3（1024 维，国内直连） |
 | 存储 | PostgreSQL + pgvector |
 | 缓存/队列 | Redis |
 | 后台任务 | 独立 Worker（jobs/outbox 模式） |
-| 测试 | pytest（142）· vitest · Playwright |
+| 联网搜索 | Bocha Search API（可降级 SearXNG / Mock） |
+| 测试 | pytest（150）· vitest · Playwright |
 
 ## 🚀 快速开始
 
@@ -86,6 +105,7 @@ make dev
 | [功能场景](docs/current/04-features-scenarios.md) | 各能力的使用场景 |
 | [体验流程](docs/current/05-experience-flow.md) | 用户操作路径 |
 | [后续可优化点](docs/current/06-roadmap.md) | 长期方向 + 已知技术债 |
+| [记忆检索优化](docs/current/07-memory-retrieval-optimization.md) | 检索评测 + 优化报告 |
 | [部署指南](docs/DEPLOYMENT.md) | 环境要求 + 依赖迁移 + 密钥配置 |
 
 设计期文档（Spec 驱动）见 `docs/` 和 `specs/`。
@@ -93,7 +113,7 @@ make dev
 ## 🧪 测试
 
 ```bash
-make test              # 全部自动化测试（pytest 142 + vitest）
+make test              # 全部自动化测试（pytest 150 + vitest）
 make ci                # 本地 CI 等价检查
 make security-check    # 密钥扫描 + 依赖审计
 make e2e               # 浏览器端到端（Playwright）

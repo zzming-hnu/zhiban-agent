@@ -307,6 +307,12 @@ interface StreamEventPayload {
   error?: { code?: string; message?: string };
 }
 
+export interface RetrievedMemory {
+  content: string;
+  score: number;
+  breakdown: Record<string, number>;
+}
+
 export function chatStream(
   conversationId: string,
   content: string,
@@ -317,6 +323,7 @@ export function chatStream(
   onToolComplete?: (tool: string, summary: string, ok: boolean) => void,
   model?: string,
   onThinking?: (round: number) => void,
+  onMemoryRetrieved?: (memories: RetrievedMemory[]) => void,
 ): AbortController {
   const controller = new AbortController();
 
@@ -405,6 +412,11 @@ export function chatStream(
               const tool = payload.data.tool_name;
               if (typeof tool === "string") {
                 onToolComplete(tool, String(payload.data.summary ?? ""), false);
+              }
+            } else if (currentEvent === "memory.retrieved" && onMemoryRetrieved) {
+              const memories = payload?.data?.memories;
+              if (Array.isArray(memories)) {
+                onMemoryRetrieved(memories as RetrievedMemory[]);
               }
             } else if (currentEvent === "message.completed") {
               onComplete();

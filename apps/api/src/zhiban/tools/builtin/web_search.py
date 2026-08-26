@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 from zhiban.tools.base import ToolContext, ToolResult
 from zhiban.tools.search.base import SearchAdapter
+from zhiban.tools.search.quality import deduplicate, rank_by_quality
 from zhiban.tools.search.sanitize import sanitize_result
 from zhiban.tools.spec import ToolSpec
 
@@ -43,6 +44,9 @@ class WebSearchTool:
             )
 
         sanitized = [sanitize_result(r) for r in results]
+        # Deduplicate near-identical results, then surface higher-credibility
+        # sources first so the agent prefers authoritative information.
+        sanitized = rank_by_quality(deduplicate(sanitized))
         if not sanitized:
             return ToolResult(
                 ok=True,
@@ -53,6 +57,6 @@ class WebSearchTool:
         return ToolResult(
             ok=True,
             data=[asdict(r) for r in sanitized],
-            summary=f"找到 {len(sanitized)} 条关于「{args.query}」的搜索结果（演示数据）",
+            summary=f"找到 {len(sanitized)} 条关于「{args.query}」的搜索结果",
             citations=[r.url for r in sanitized],
         )

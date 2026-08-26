@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from zhiban.agent.compaction import build_context_with_compaction
 from zhiban.agent.context import ContextManager
-from zhiban.agent.events import RUN_SNAPSHOT, AgentEvent
+from zhiban.agent.events import MEMORY_RETRIEVED, RUN_SNAPSHOT, AgentEvent
 from zhiban.agent.orchestrator import run_agent_stream
 from zhiban.agent.router import route
 from zhiban.agent.subagent import SubAgentContext
@@ -162,7 +162,7 @@ async def stream_run(
         messages = compacted.messages
 
         # Inject retrieved memories after the system prompt.
-        messages = await _inject_retrieved_memories(
+        messages, retrieved_details = await _inject_retrieved_memories(
             session, messages, principal.user_id, run.user_message_id, embedding
         )
 
@@ -171,6 +171,18 @@ async def stream_run(
 
         await run_repo.mark_running(run)
         await session.commit()
+
+        # Emit an explainable retrieval event: which memories were recalled and
+        # why (per-factor score breakdown).
+        if retrieved_details:
+            retrieved_event = AgentEvent(
+                type=MEMORY_RETRIEVED,
+                seq=after_seq + 1,
+                run_id=run_id,
+                data={"memories": retrieved_details},
+            )
+            await buffer.append(run_id, retrieved_event)
+            yield sse_event(retrieved_event)
 
         full_text = ""
         try:
@@ -268,8 +280,8 @@ async def _inject_retrieved_memories(
     user_id: uuid.UUID,
     user_message_id: uuid.UUID,
     embedding: EmbeddingAdapter | None = None,
-) -> list[ChatMessage]:
-    """Inject memories into the context.
+) -> tuple[list[ChatMessage], list[dict[str, Any]]]:
+    """Inject memories into the context and return retrieval details.
 
     Two layers, mirroring the source_kind split:
 
@@ -278,6 +290,10 @@ async def _inject_retrieved_memories(
       ``user.core_memories``), so the agent always knows basic info/preferences.
     - **Implicit memories** (auto-extracted) are retrieved on demand by
       relevance to the current query.
+
+    Returns ``(messages, retrieved_details)`` where ``retrieved_details`` lists
+    each recalled implicit memory with its score breakdown, enabling an
+    explainable "why did the agent recall this" signal to the client.
     """
     from zhiban.memory.search import search_memories
 
@@ -285,7 +301,7 @@ async def _inject_retrieved_memories(
         await session.execute(select(Message).where(Message.id == user_message_id))
     ).scalar_one_or_none()
     if user_msg is None:
-        return messages
+        return messages, []
 
     # Layer 1: explicit core memories, always injected.
     core_lines = await _load_explicit_memories(session, user_id)
@@ -293,6 +309,7 @@ async def _inject_retrieved_memories(
     # Layer 2: implicit memories, retrieved by relevance (semantic if embedding
     # is available, otherwise lexical fallback).
     retrieved_lines: list[str] = []
+    retrieved_details: list[dict[str, Any]] = []
     try:
         query_embedding = None
         if embedding is not None:
@@ -308,11 +325,18 @@ async def _inject_retrieved_memories(
             if scored.memory.source_kind == "explicit":
                 continue
             retrieved_lines.append(f"- {scored.memory.content}")
+            retrieved_details.append(
+                {
+                    "content": scored.memory.content,
+                    "score": round(scored.score, 4),
+                    "breakdown": {k: round(v, 4) for k, v in scored.breakdown.items()},
+                }
+            )
     except Exception:  # noqa: BLE001 - memory retrieval is best-effort
         pass
 
     if not core_lines and not retrieved_lines:
-        return messages
+        return messages, retrieved_details
 
     # Build injected messages.
     injected_msgs: list[ChatMessage] = []
@@ -340,7 +364,7 @@ async def _inject_retrieved_memories(
             inserted = True
     if not inserted:
         injected = injected_msgs + injected
-    return injected
+    return injected, retrieved_details
 
 
 async def _load_explicit_memories(session: AsyncSession, user_id: uuid.UUID) -> list[str]:

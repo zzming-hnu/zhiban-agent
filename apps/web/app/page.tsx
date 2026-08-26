@@ -13,19 +13,19 @@ const capabilities = [
     index: "02",
     title: "可控记忆",
     description: "记住真正重要的信息，也允许你查看、更正与遗忘。",
-    status: "即将实现",
+    status: "已可体验",
   },
   {
     index: "03",
     title: "可靠工具",
     description: "检索、摘要和任务操作都有明确状态与失败兜底。",
-    status: "即将实现",
+    status: "已可体验",
   },
   {
     index: "04",
     title: "任务跟踪",
     description: "把对话里的行动项变成可查询、可更新的真实任务。",
-    status: "即将实现",
+    status: "已可体验",
   },
 ] as const;
 
@@ -54,7 +54,7 @@ export default function Home() {
           <div>
             <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-sm font-medium text-indigo-700">
               <span className="h-1.5 w-1.5 rounded-full bg-indigo-500" />
-              工程基础阶段
+              核心能力已上线
             </div>
             <h1 className="max-w-3xl text-4xl font-semibold leading-tight tracking-[-0.035em] text-slate-950 sm:text-5xl lg:text-6xl">
               把每次对话，
@@ -62,7 +62,7 @@ export default function Home() {
               变成可以延续的理解。
             </h1>
             <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-600">
-              知伴正在从一套可验证的工程基础开始构建。它会记住你允许保存的信息，可靠地调用工具，并让每个任务都有真实状态。
+              知伴会记住你允许保存的信息，可靠地调用工具，并让每个任务都有真实状态。现在就可以开始体验。
             </p>
 
             <div className="mt-8 flex flex-wrap gap-3">
@@ -87,10 +87,10 @@ export default function Home() {
               <div className="mb-10 flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-white">构建进度</p>
-                  <p className="mt-1 text-xs text-slate-400">SPEC-001 · Project foundation</p>
+                  <p className="mt-1 text-xs text-slate-400">核心能力已全部落地</p>
                 </div>
-                <span className="rounded-full bg-white/10 px-3 py-1 text-xs text-slate-200">
-                  in progress
+                <span className="rounded-full bg-emerald-400/10 px-3 py-1 text-xs text-emerald-300">
+                  complete
                 </span>
               </div>
               <div className="space-y-5">
@@ -105,24 +105,26 @@ export default function Home() {
                 </div>
                 <div>
                   <div className="mb-2 flex justify-between text-xs">
-                    <span className="text-slate-300">Web / API 骨架</span>
-                    <span className="text-indigo-300">进行中</span>
+                    <span className="text-slate-300">Web / API / Worker</span>
+                    <span className="text-emerald-300">完成</span>
                   </div>
                   <div className="h-1.5 rounded-full bg-white/10">
-                    <div className="h-full w-2/3 rounded-full bg-indigo-400" />
+                    <div className="h-full w-full rounded-full bg-emerald-400" />
                   </div>
                 </div>
                 <div>
                   <div className="mb-2 flex justify-between text-xs">
-                    <span className="text-slate-300">对话与记忆</span>
-                    <span className="text-slate-500">待开始</span>
+                    <span className="text-slate-300">对话 · 记忆 · 工具 · 任务</span>
+                    <span className="text-emerald-300">完成</span>
                   </div>
-                  <div className="h-1.5 rounded-full bg-white/10" />
+                  <div className="h-1.5 rounded-full bg-white/10">
+                    <div className="h-full w-full rounded-full bg-emerald-400" />
+                  </div>
                 </div>
               </div>
               <div className="mt-10 border-t border-white/10 pt-5">
                 <p className="text-sm leading-6 text-slate-300">
-                  每一步都会先定义 Spec，再实现、测试并同步真实验证结果。
+                  多轮对话、可控记忆、可靠工具与任务跟踪，已可完整体验。
                 </p>
               </div>
             </div>
@@ -133,12 +135,12 @@ export default function Home() {
           <div className="mb-8 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
             <div>
               <p className="text-sm font-semibold uppercase tracking-[0.16em] text-indigo-600">
-                Product foundation
+                Core capabilities
               </p>
-              <h2 className="mt-2 text-2xl font-semibold tracking-tight">从四个可靠能力开始</h2>
+              <h2 className="mt-2 text-2xl font-semibold tracking-tight">四个可靠能力，已经可以体验</h2>
             </div>
             <p className="max-w-xl text-sm leading-6 text-slate-500">
-              当前页面用于确认 Web 工程可运行。业务能力会按照已确认的实施计划逐项接入，而不是一次性堆叠不可验证功能。
+              每一能力都经过设计、实现与测试，从对话、记忆到工具与任务，形成一条完整可验证的体验链路。
             </p>
           </div>
 
