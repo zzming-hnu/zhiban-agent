@@ -1,0 +1,129 @@
+# Production compose optimized for small hosts (2 cores / 2 GB RAM).
+#
+# Differences from compose.yml (development):
+#   - SearXNG removed (web search uses Bocha API instead).
+#   - api + worker merged into a single container to save memory.
+#   - PostgreSQL tuned for low memory (shared_buffers=128MB).
+#   - Explicit mem_limit on every service to avoid OOM on the whole host.
+
+name: zhiban-prod
+
+x-api-environment: &api-environment
+  APP_ENV: production
+  APP_VERSION: 0.1.0
+  LOG_LEVEL: INFO
+  DEMO_MODE: "false"
+  WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3000}
+  SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET is required}
+  DATABASE_URL: postgresql+asyncpg://zhiban:${POSTGRES_PASSWORD:-zhiban}@postgres:5432/zhiban
+  REDIS_URL: redis://redis:6379/0
+  LLM_PROVIDER: ${LLM_PROVIDER:-deepseek}
+  LLM_API_KEY: ${LLM_API_KEY:-}
+  LLM_BASE_URL: ${LLM_BASE_URL:-https://api.deepseek.com}
+  LLM_MODEL: ${LLM_MODEL:-deepseek-v4-flash}
+  EMBEDDING_MODEL: ${EMBEDDING_MODEL:-BAAI/bge-m3}
+  EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-https://api.siliconflow.cn/v1}
+  EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
+  SEARCH_PROVIDER: ${SEARCH_PROVIDER:-bocha}
+  SEARCH_API_KEY: ${SEARCH_API_KEY:-}
+  SEARCH_BASE_URL: ${SEARCH_BASE_URL:-}
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_DB: zhiban
+      POSTGRES_USER: zhiban
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-zhiban}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    command:
+      - postgres
+      - -c
+      - shared_buffers=128MB
+      - -c
+      - max_connections=20
+      - -c
+      - work_mem=4MB
+      - -c
+      - maintenance_work_mem=32MB
+      - -c
+      - effective_cache_size=512MB
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zhiban -d zhiban"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    mem_limit: 512m
+    restart: unless-stopped
+
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "128mb", "--maxmemory-policy", "allkeys-lru"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    mem_limit: 256m
+    restart: unless-stopped
+
+  app:
+    build:
+      context: ../..
+      dockerfile: infra/docker/api-prod.Dockerfile
+    environment: *api-environment
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health/live', timeout=2)
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    mem_limit: 512m
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ../..
+      dockerfile: infra/docker/web.Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000/api/v1}
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000/api/v1}
+      NODE_OPTIONS: --max-old-space-size=256
+    ports:
+      - "3000:3000"
+    depends_on:
+      app:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://localhost:3000').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    mem_limit: 384m
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
