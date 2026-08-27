@@ -6,9 +6,9 @@
 |---|---|
 | Spec ID | `SPEC-005` |
 | 状态 | `implemented` |
-| 版本 | `1.0.0` |
+| 版本 | `1.1.0` |
 | 创建日期 | 2026-08-19 |
-| 最后更新 | 2026-08-19 |
+| 最后更新 | 2026-08-27 |
 | 实施阶段 | `06-implementation-plan.md` 阶段 5 |
 | 前置依赖 | `SPEC-002`（认证隔离）、`SPEC-003`（上下文/compaction）、`SPEC-004`（工具运行时） |
 | 后续依赖 | `SPEC-006`（待办提醒，记忆的 `task` 类型投影） |
@@ -229,6 +229,8 @@ apps/api/src/zhiban/
 | 分类由提取时判断 | 模型在提取候选时直接输出 category，后端只做枚举校验 |
 | 分层记忆注入 | 借鉴小 Q：explicit（主动记忆）每次全量注入（`[用户的核心信息与偏好]`），implicit（自动提取）按需召回（`[与当前问题相关的用户记忆]`） |
 | Prompt 三层结构 | 借鉴小 Q：base（身份+行为铁律）+ tool_use（工具路由）+ memory_rules（记忆行为规则），每次 query 组装 |
+| 记忆演化链（二期） | 槽位冲突更新时不再覆盖丢失：新值以 active 落库，旧值标记 `superseded` 并经 `superseded_by_id` 指向新记忆，保留演化历史（支持「你之前……现在……」追问）。见 `docs/progress/005b-memory-evolution-consolidation.md` |
+| 记忆整合（二期） | 新增 `memory.consolidate` 后台任务：LLM 提议冗余/矛盾（保留谁、淘汰谁），工程层确定性 apply（复用 `superseded_by_id`）。自动（记忆数≥15）与主动（「整理记忆」）双触发。LLM 只提议、不改库、不新造内容 |
 
 ## 14. 开放问题
 

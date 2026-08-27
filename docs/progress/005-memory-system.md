@@ -91,3 +91,7 @@ memory 工具需要 MemoryService（绑定用户 session），因此在 runs_rou
 ## 7. 下一步
 
 进入 SPEC-006（待办与提醒）：写工具、Jobs/Outbox、Worker 调度、时区处理、幂等投递。
+
+## 8. 后续增强（2026-08-27）
+
+本阶段完成后，记忆系统又进行了一次二期优化，补齐「演化链」与「整合任务」两个深层次能力，详见 [005b-memory-evolution-consolidation](./005b-memory-evolution-consolidation.md)。
