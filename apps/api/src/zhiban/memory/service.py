@@ -115,7 +115,11 @@ class MemoryService:
 
         # Decide.
         decision, supersede_target = await self._decide(
-            user_id=user_id, candidate=candidate, fingerprint=fingerprint, ckey=ckey
+            user_id=user_id,
+            candidate=candidate,
+            fingerprint=fingerprint,
+            ckey=ckey,
+            source_kind=source_kind,
         )
 
         if decision == Decision.add:
@@ -202,6 +206,7 @@ class MemoryService:
         candidate: MemoryCandidatePayload,
         fingerprint: str,
         ckey: str,
+        source_kind: str,
     ) -> tuple[str, Memory | None]:
         """Decide add/update/ignore based on dedupe and conflict rules.
 
@@ -213,10 +218,20 @@ class MemoryService:
         if exact is not None:
             return Decision.ignore, None
 
-        # Same conflict slot (same type+subject+predicate, different value) ->
-        # update/supersede. Supersede the most recently updated active memory.
+        # Same conflict slot (same type+subject+predicate after canonicalization)
+        # -> update/supersede. Prefer to supersede the most recently updated
+        # active memory. Explicit memories (user asked to remember) are the
+        # user's authoritative statement; if the incoming candidate is implicit
+        # and an explicit memory already occupies the slot, ignore the implicit
+        # candidate instead of superseding the explicit one.
         conflicts = await self.repo.get_active_by_conflict_key(user_id=user_id, conflict_key=ckey)
         if conflicts:
+            # If the incoming candidate is implicit but an explicit memory
+            # already exists in this slot, keep the explicit one (drop implicit).
+            if source_kind == "implicit" and any(
+                m.source_kind == "explicit" for m in conflicts
+            ):
+                return Decision.ignore, None
             target = max(conflicts, key=lambda m: m.updated_at)
             return Decision.update, target
 

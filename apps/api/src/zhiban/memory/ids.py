@@ -3,7 +3,7 @@
 import hashlib
 import uuid
 
-from zhiban.memory.normalize import normalize_text
+from zhiban.memory.normalize import normalize_predicate, normalize_text
 
 
 def _sha256(material: str) -> str:
@@ -46,13 +46,19 @@ def conflict_key(
     subject: str,
     predicate: str,
 ) -> str:
-    """Conflict key for slot-conflict detection (excludes value)."""
+    """Conflict key for slot-conflict detection (excludes value).
+
+    The predicate is canonicalized (``normalize_predicate``) so that synonym
+    predicates ("喜欢吃" vs "喜欢" vs "爱吃") collapse to the same slot. This
+    lets near-duplicate memories from different extraction paths (explicit
+    memory.add vs implicit flush) be recognized as the same fact and merged.
+    """
     material = "\x1f".join(
         [
             str(user_id),
             memory_type,
             normalize_text(subject),
-            normalize_text(predicate),
+            normalize_predicate(predicate),
         ]
     )
     return _sha256(material)
