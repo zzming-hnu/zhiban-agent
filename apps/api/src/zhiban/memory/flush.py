@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from zhiban.db.models import Conversation, Message
 from zhiban.llm.base import LLMAdapter
+from zhiban.memory.dedup import find_similar_active_memory
 from zhiban.memory.extractor import EXTRACTOR_VERSION, detect_explicit_request, extract_candidates
 from zhiban.memory.schemas import MemoryCandidatePayload
 from zhiban.memory.service import MemoryService
@@ -105,6 +106,12 @@ async def flush_conversation_memory(
             if candidate.valid_until
             else None,
         )
+        # Write-time dedupe: skip a candidate whose fact is already captured by
+        # an existing active memory (including explicit ones from memory.add),
+        # so implicit extraction never re-adds what the user already remembered.
+        if await find_similar_active_memory(session, user_id=user_id, fact=payload.fact):
+            continue
+
         # Determine source kind per candidate is not straightforward here;
         # use implicit (extraction context) by default.
         await service.process_candidate(

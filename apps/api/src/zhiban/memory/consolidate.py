@@ -110,7 +110,31 @@ async def consolidate_memories(
     if len(memories) < threshold:
         return ConsolidateResult(superseded=0, reason="below_threshold")
 
-    # Ask the LLM to propose supersessions.
+    # --- Phase 1: deterministic semantic dedupe (no LLM) ---
+    # Merge near-duplicate facts (token overlap >= threshold). Keep the most
+    # recently updated one, supersede the rest. This is deterministic and
+    # conservative, so it never wrongly merges two distinct facts.
+    from zhiban.memory.dedup import DEDUP_THRESHOLD, fact_similarity
+
+    superseded = 0
+    # Sort by updated_at ascending so the newest is processed last and wins.
+    ordered = sorted(memories, key=lambda m: m.updated_at)
+    kept_ids: set[uuid.UUID] = set()
+    for i, mem in enumerate(ordered):
+        if mem.id in kept_ids:
+            continue
+        for other in ordered[i + 1 :]:
+            if other.id in kept_ids:
+                continue
+            if fact_similarity(mem.content, other.content) >= DEDUP_THRESHOLD:
+                # `other` is newer (sorted ascending) -> it supersedes `mem`.
+                mem.status = MemoryStatus.superseded
+                mem.superseded_by_id = other.id
+                kept_ids.add(mem.id)
+                superseded += 1
+                break
+
+    # --- Phase 2: LLM proposes redundancy/conflict supersessions ---
     try:
         response = await llm.chat(
             [
@@ -119,19 +143,22 @@ async def consolidate_memories(
             ]
         )
     except Exception:  # noqa: BLE001 - consolidation is best-effort
-        return ConsolidateResult(superseded=0, reason="llm_error")
+        if superseded:
+            await session.commit()
+        return ConsolidateResult(superseded=superseded, reason="llm_error_after_dedup")
 
     result = _parse_result(response.content)
     proposals = result.get("supersede", [])
     if not isinstance(proposals, list):
-        return ConsolidateResult(superseded=0, reason="no_proposals")
+        if superseded:
+            await session.commit()
+        return ConsolidateResult(superseded=superseded, reason="no_proposals")
 
     # Index active memories by id for deterministic validation.
     by_id: dict[uuid.UUID, Memory] = {}
     for m in memories:
         by_id[m.id] = m
 
-    superseded = 0
     for proposal in proposals:
         if not isinstance(proposal, dict):
             continue
