@@ -4,8 +4,9 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
+import sqlalchemy as sa
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -309,6 +310,12 @@ class Memory(Base):
     subject: Mapped[str] = mapped_column(String(80), nullable=False)
     predicate: Mapped[str] = mapped_column(String(80), nullable=False)
     value: Mapped[str] = mapped_column(String(500), nullable=False)
+    # Whether the fact is negated ("does NOT like spicy"). Separating negation
+    # from the predicate keeps the predicate stable ("喜欢" vs "不喜欢"), so
+    # slot-conflict detection can group a fact and its negation together.
+    negated: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=sa.false()
+    )
     content: Mapped[str] = mapped_column(Text, nullable=False)
     source_kind: Mapped[str] = mapped_column(String(16), nullable=False, default="explicit")
     status: Mapped[str] = mapped_column(

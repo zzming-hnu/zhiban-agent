@@ -39,6 +39,11 @@ class MemoryService:
         subject = normalize_text(candidate.subject)
         predicate = normalize_text(candidate.predicate)
         value = normalize_text(candidate.value)
+        # Negation is rendered as a prefix on the predicate ("不喜欢") rather
+        # than being baked into the value, so the content reads naturally and
+        # the predicate stays stable for slot-conflict detection.
+        if candidate.negated and not predicate.startswith("不"):
+            predicate = f"不{predicate}"
         return f"{subject} {predicate} {value}".strip()
 
     async def process_candidate(
@@ -61,6 +66,7 @@ class MemoryService:
             subject=candidate.subject,
             predicate=candidate.predicate,
             value=candidate.value,
+            negated=candidate.negated,
         )
         ckey = conflict_key(
             user_id=user_id,
@@ -124,6 +130,7 @@ class MemoryService:
                 subject=normalize_text(candidate.subject),
                 predicate=normalize_text(candidate.predicate),
                 value=normalize_text(candidate.value),
+                negated=candidate.negated,
                 content=content,
                 source_kind=source_kind,
                 status=MemoryStatus.active,
@@ -155,6 +162,7 @@ class MemoryService:
                 subject=normalize_text(candidate.subject),
                 predicate=normalize_text(candidate.predicate),
                 value=normalize_text(candidate.value),
+                negated=candidate.negated,
                 content=content,
                 source_kind=source_kind,
                 status=MemoryStatus.active,
@@ -251,6 +259,7 @@ class MemoryService:
                 subject=memory.subject,
                 predicate=memory.predicate,
                 value=memory.value,
+                negated=memory.negated,
             )
             memory.embedding = None
         if category is not None:

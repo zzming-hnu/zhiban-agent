@@ -30,6 +30,7 @@ class AddMemoryInput(BaseModel):
     subject: str = Field(min_length=1, max_length=80)
     predicate: str = Field(min_length=1, max_length=80)
     value: str = Field(min_length=1, max_length=500)
+    negated: bool = Field(default=False, description="是否为否定事实（如「不喜欢」）")
 
 
 class ListMemoryInput(BaseModel):
@@ -95,6 +96,7 @@ class MemoryAddTool:
             subject=args.subject,
             predicate=args.predicate,
             value=args.value,
+            negated=args.negated,
         )
         ckey = conflict_key(
             user_id=ctx.user_id,
@@ -104,7 +106,10 @@ class MemoryAddTool:
         )
         # Deterministic category resolution (identity/person/event -> basic_info).
         category = resolve_category(args.memory_type, args.category)
-        content = f"{args.subject} {args.predicate} {args.value}".strip()
+        render_predicate = normalize_text(args.predicate)
+        if args.negated and not render_predicate.startswith("不"):
+            render_predicate = f"不{render_predicate}"
+        content = f"{args.subject} {render_predicate} {args.value}".strip()
         memory = Memory(
             user_id=ctx.user_id,
             memory_type=args.memory_type,
@@ -112,6 +117,7 @@ class MemoryAddTool:
             subject=normalize_text(args.subject),
             predicate=normalize_text(args.predicate),
             value=normalize_text(args.value),
+            negated=args.negated,
             content=content,
             source_kind=SourceKind.explicit,
             status=MemoryStatus.active,

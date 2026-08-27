@@ -17,11 +17,14 @@ def memory_fingerprint(
     subject: str,
     predicate: str,
     value: str,
+    negated: bool = False,
 ) -> str:
     """Fingerprint of a memory fact (used for active-memory dedupe).
 
-    ``SHA-256(user_id + type + subject + predicate + value)`` with normalized
-    components. Version-invariant: does not include extractor/model version.
+    ``SHA-256(user_id + type + subject + predicate + value + negated)`` with
+    normalized components. ``negated`` is included so a fact and its negation
+    are distinct memories (not deduped), while still sharing a conflict slot
+    (``conflict_key`` excludes ``negated``).
     """
     material = "\x1f".join(
         [
@@ -30,6 +33,7 @@ def memory_fingerprint(
             normalize_text(subject),
             normalize_text(predicate),
             normalize_text(value),
+            "1" if negated else "0",
         ]
     )
     return _sha256(material)

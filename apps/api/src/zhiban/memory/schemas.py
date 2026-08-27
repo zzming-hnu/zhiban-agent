@@ -23,6 +23,7 @@ class MemoryCandidatePayload(ApiModel):
     subject: str = Field(min_length=1, max_length=80)
     predicate: str = Field(min_length=1, max_length=80)
     value: str = Field(min_length=1, max_length=500)
+    negated: bool = False
     source_message_ids: list[uuid.UUID] = Field(min_length=1, max_length=8)
     evidence_quote: str = Field(min_length=1, max_length=240)
     confidence: float = Field(ge=0, le=1)
@@ -37,6 +38,7 @@ class MemoryView(ApiModel):
     subject: str
     predicate: str
     value: str
+    negated: bool = False
     content: str
     source_kind: str
     status: str
@@ -65,6 +67,7 @@ class CreateMemoryRequest(ApiModel):
     subject: str = Field(min_length=1, max_length=80)
     predicate: str = Field(min_length=1, max_length=80)
     value: str = Field(min_length=1, max_length=500)
+    negated: bool = False
 
 
 class UpdateMemoryRequest(ApiModel):

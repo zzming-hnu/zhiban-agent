@@ -39,6 +39,7 @@ def _memory_view(memory: Memory) -> MemoryView:
         subject=memory.subject,
         predicate=memory.predicate,
         value=memory.value,
+        negated=memory.negated,
         content=memory.content,
         source_kind=memory.source_kind,
         status=memory.status,
@@ -80,6 +81,7 @@ async def create_memory(
         subject=body.subject,
         predicate=body.predicate,
         value=body.value,
+        negated=body.negated,
     )
     ckey = conflict_key(
         user_id=principal.user_id,
@@ -87,6 +89,9 @@ async def create_memory(
         subject=body.subject,
         predicate=body.predicate,
     )
+    predicate = normalize_text(body.predicate)
+    if body.negated and not predicate.startswith("不"):
+        predicate = f"不{predicate}"
     memory = Memory(
         user_id=principal.user_id,
         memory_type=body.memory_type,
@@ -94,7 +99,8 @@ async def create_memory(
         subject=normalize_text(body.subject),
         predicate=normalize_text(body.predicate),
         value=normalize_text(body.value),
-        content=f"{body.subject} {body.predicate} {body.value}".strip(),
+        negated=body.negated,
+        content=f"{body.subject} {predicate} {body.value}".strip(),
         source_kind=SourceKind.explicit,
         status=MemoryStatus.active,
         confidence=1.0,

@@ -29,6 +29,7 @@ class ExtractedCandidate(BaseModel):
     subject: str = Field(min_length=1, max_length=80)
     predicate: str = Field(min_length=1, max_length=80)
     value: str = Field(min_length=1, max_length=500)
+    negated: bool = False
     source_message_ids: list[int] = Field(min_length=1, max_length=8)
     evidence_quote: str = Field(min_length=1, max_length=240)
     confidence: float = Field(ge=0, le=1)
@@ -63,19 +64,23 @@ _EXTRACTION_SYSTEM = (
     "  **禁止把 value 里的字混进 predicate**。\n"
     "- value：事实的纯值（不超过 500 字），**只写具体内容，不写关系词、不重复\n"
     "  subject/predicate 里的字**。\n"
+    "- negated：布尔值（true/false），表示这条事实是否为否定。**否定一律用 negated\n"
+    "  标记，不要把「不/没」写进 predicate 或 value**。\n"
     "\n"
     "【拆分范式（务必严格遵循）】\n"
-    "偏好类（preference）统一用「喜欢/不喜欢」作 predicate，具体对象作 value：\n"
-    "- 「我不吃辣」「我不喜欢辣」→ subject=\"用户\"、predicate=\"不喜欢\"、value=\"吃辣\"\n"
-    "- 「我爱喝咖啡」→ subject=\"用户\"、predicate=\"喜欢\"、value=\"喝咖啡\"\n"
+    "偏好类（preference）统一用「喜欢」作 predicate，具体对象作 value，否定用 negated：\n"
+    "- 「我不吃辣」「我不喜欢辣」→ subject=\"用户\"、predicate=\"喜欢\"、value=\"吃辣\"、negated=true\n"
+    "- 「我爱喝咖啡」→ subject=\"用户\"、predicate=\"喜欢\"、value=\"喝咖啡\"、negated=false\n"
+    "- 「我喜欢吃辣」→ subject=\"用户\"、predicate=\"喜欢\"、value=\"吃辣\"、negated=false\n"
     "  ❌ 错误示例：predicate=\"喜欢吃\"、value=\"不喜欢吃辣\"（吃字重复、语义矛盾）\n"
-    "  ❌ 错误示例：predicate=\"不喜欢吃\"、value=\"辣的食物\"（「吃」应并入 value）\n"
+    "  ❌ 错误示例：predicate=\"不喜欢\"、value=\"吃辣\"（否定应放 negated，不放 predicate）\n"
+    "  ❌ 错误示例：predicate=\"喜欢\"、value=\"不吃辣\"（否定应放 negated，不放 value）\n"
     "\n"
     "规则：\n"
     "1. 只从「用户」说的话提取，不要把助手说的话当作用户记忆。\n"
     "2. 一次性问题、寒暄、验证码、密码、令牌、敏感凭据一律不提取。\n"
-    "3. 每条候选必须有 subject、predicate、value、category、evidence_quote（原文证据，\n"
-    "必须能在用户消息中找到）、confidence（0~1）、importance（0~1）。\n"
+    "3. 每条候选必须有 subject、predicate、value、category、negated、evidence_quote\n"
+    "（原文证据，必须能在用户消息中找到）、confidence（0~1）、importance（0~1）。\n"
     "4. source_message_ids 用消息在输入中的编号（从 0 开始）。\n"
     "5. 同一个语义只提取一条，不要因「喜欢/不喜欢」的措辞差异拆成多条。\n"
     "6. 没有值得保存的信息时输出空数组 []。\n"
