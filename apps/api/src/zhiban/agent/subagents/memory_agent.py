@@ -10,6 +10,7 @@ from zhiban.llm.base import LLMAdapter
 from zhiban.memory.service import MemoryService
 from zhiban.memory.tools import (
     MemoryAddTool,
+    MemoryConsolidateTool,
     MemoryDeleteTool,
     MemoryListTool,
     MemoryUpdateTool,
@@ -23,12 +24,14 @@ _MEMORY_SUBAGENT_SYSTEM = """你是记忆子代理，负责用户记忆的召回
 - memory.add：新增一条记忆
 - memory.update：修改记忆（需先 list 拿到 id）
 - memory.delete：删除记忆（需先 list 拿到 id）
+- memory.consolidate：整理记忆（去除冗余、消解矛盾）
 
 规则：
-1. 基于用户输入判断要做什么：查看、新增、修改、删除，或检索记忆来回答。
+1. 基于用户输入判断要做什么：查看、新增、修改、删除、整理，或检索记忆来回答。
 2. 需要先拿到记忆 id 的操作（update/delete），先调用 memory.list。
-3. 完成操作后，用一句话总结「你做了什么、结果是什么」。
-4. 只输出最终总结，不要暴露工具调用过程。"""
+3. 用户说「整理记忆」「记忆太乱」等时，调用 memory.consolidate。
+4. 完成操作后，用一句话总结「你做了什么、结果是什么」。
+5. 只输出最终总结，不要暴露工具调用过程。"""
 
 
 class MemoryAgent(ToolCallingSubAgent):
@@ -47,4 +50,5 @@ class MemoryAgent(ToolCallingSubAgent):
         registry.register(MemoryAddTool(self._service))
         registry.register(MemoryUpdateTool(self._service))
         registry.register(MemoryDeleteTool(self._service))
+        registry.register(MemoryConsolidateTool(self._service))
         return registry

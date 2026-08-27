@@ -226,3 +226,45 @@ class MemoryDeleteTool:
         if not deleted:
             return ToolResult(ok=False, summary="记忆不存在", error_code="not_found")
         return ToolResult(ok=True, summary="已删除记忆")
+
+
+class ConsolidateMemoryInput(BaseModel):
+    model_config = {"extra": "forbid"}
+
+
+class MemoryConsolidateTool:
+    """User-initiated memory consolidation: dedupe + resolve conflicts.
+
+    Enqueues a background ``memory.consolidate`` job (the same path the
+    auto-trigger uses), so the interaction stays fast while the worker tidies
+    up in the background.
+    """
+
+    spec = ToolSpec(
+        name="memory.consolidate",
+        description=(
+            "整理用户记忆：识别并去除冗余、消解矛盾的记忆。"
+            "当用户说「整理一下我的记忆」「记忆太乱了帮我整理」等时调用。"
+        ),
+        input_model=ConsolidateMemoryInput,
+        permission="write",
+        timeout_seconds=5.0,
+        idempotency="optional",
+        retry_policy="never",
+    )
+
+    def __init__(self, service: MemoryService) -> None:
+        self._service = service
+
+    async def execute(self, ctx: ToolContext, args: ConsolidateMemoryInput) -> ToolResult:
+        from zhiban.workers.jobs import enqueue_job
+
+        await enqueue_job(
+            self._service._session,
+            user_id=ctx.user_id,
+            job_type="memory.consolidate",
+            payload={},
+            idempotency_key=f"memconsolidate:{ctx.user_id}",
+        )
+        await self._service._session.commit()
+        return ToolResult(ok=True, summary="已开始整理记忆，稍后完成")

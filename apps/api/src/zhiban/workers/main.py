@@ -11,7 +11,7 @@ from zhiban.core.config import get_settings
 from zhiban.core.resources import AppResources
 from zhiban.db.session import create_session_factory
 from zhiban.observability.logging import configure_logging
-from zhiban.workers.memory_jobs import handle_memory_extract
+from zhiban.workers.memory_jobs import handle_memory_consolidate, handle_memory_extract
 from zhiban.workers.reminder_jobs import handle_reminder_deliver, handle_reminder_scan
 from zhiban.workers.runner import JobDispatcher, run_loop
 
@@ -21,6 +21,7 @@ logger = structlog.get_logger(__name__)
 def build_dispatcher() -> JobDispatcher:
     dispatcher = JobDispatcher()
     dispatcher.register("memory.extract", handle_memory_extract)
+    dispatcher.register("memory.consolidate", handle_memory_consolidate)
     dispatcher.register("reminder.scan", handle_reminder_scan)
     dispatcher.register("reminder.deliver", handle_reminder_deliver)
     return dispatcher
