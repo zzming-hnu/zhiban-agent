@@ -22,19 +22,32 @@ from zhiban.memory.normalize import normalize_text
 # Conservative threshold: only merge when facts are near-identical. We prefer
 # false negatives (a rare duplicate survives) over false positives (two distinct
 # facts wrongly merged), which would silently destroy user information.
-DEDUP_THRESHOLD = 0.85
+DEDUP_THRESHOLD = 0.80
+
+# Negation markers. Two facts with opposite polarity ("喜欢" vs "不喜欢") are
+# semantically distinct and must NOT be deduped, even though their lexical
+# overlap is high. A fact and its negation are an *evolution* (handled by the
+# supersede chain), not a duplicate.
+_NEGATION_MARKERS = ("不", "没", "无", "别", "非", "否认", "拒绝")
+
+
+def _has_negation(text: str) -> bool:
+    return any(marker in text for marker in _NEGATION_MARKERS)
 
 
 def fact_similarity(a: str, b: str) -> float:
     """Symmetric lexical similarity between two facts, in [0, 1].
 
-    Uses the min of both directional overlaps so that a short fact contained
-    inside a longer one (or vice versa) still scores high, while unrelated
-    facts score low.
+    Returns 0.0 when the two facts have opposite negation polarity (one says
+    "喜欢", the other "不喜欢"), so a fact and its negation are never merged as
+    duplicates. Otherwise uses the min of both directional token overlaps.
     """
     na = normalize_text(a)
     nb = normalize_text(b)
     if not na or not nb:
+        return 0.0
+    # Opposite polarity -> never a duplicate.
+    if _has_negation(na) != _has_negation(nb):
         return 0.0
     # Symmetric: require high overlap in both directions.
     return min(lexical_similarity(na, nb), lexical_similarity(nb, na))
