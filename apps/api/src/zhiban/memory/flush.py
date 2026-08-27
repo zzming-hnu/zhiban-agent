@@ -83,6 +83,7 @@ async def flush_conversation_memory(
             subject=candidate.subject,
             predicate=candidate.predicate,
             value=candidate.value,
+            negated=candidate.negated,
             source_message_ids=source_ids,
             evidence_quote=candidate.evidence_quote,
             confidence=candidate.confidence,
