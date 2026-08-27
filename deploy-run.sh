@@ -13,6 +13,17 @@ GHCR="ghcr.io/zzming-hnu/zhiban-agent"
 PUBLIC_IP="${PUBLIC_IP:-$(curl -s --max-time 5 ifconfig.me || echo 'localhost')}"
 
 # 密钥（从环境变量读取，未设置则生成随机值）
+# 重要：如果 .env 已存在，必须复用其中的密钥，否则会导致数据库密码漂移
+#（数据库数据卷里的密码不会随 .env 重生成而改变，app 将连不上库）。
+if [ -f .env ]; then
+  # 从现有 .env 复用密钥，避免每次部署都换密码
+  SESSION_SECRET="$(grep -E '^SESSION_SECRET=' .env | cut -d= -f2-)"
+  POSTGRES_PASSWORD="$(grep -E '^POSTGRES_PASSWORD=' .env | cut -d= -f2-)"
+  # 兼容旧 .env（可能没有 POSTGRES_PASSWORD，只有 DATABASE_URL）
+  if [ -z "$POSTGRES_PASSWORD" ]; then
+    POSTGRES_PASSWORD="$(grep -E '^DATABASE_URL=' .env | sed -E 's#.*://[^:]+:([^@]+)@.*#\1#')"
+  fi
+fi
 SESSION_SECRET="${SESSION_SECRET:-$(openssl rand -hex 32)}"
 POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-$(openssl rand -hex 16)}"
 
@@ -42,6 +53,7 @@ NEXT_PUBLIC_API_BASE_URL=http://${PUBLIC_IP}:8000/api/v1
 API_HOST=0.0.0.0
 API_PORT=8000
 SESSION_SECRET=${SESSION_SECRET}
+POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
 DATABASE_URL=postgresql+asyncpg://zhiban:${POSTGRES_PASSWORD}@postgres:5432/zhiban
 REDIS_URL=redis://redis:6379/0
 LLM_PROVIDER=deepseek
