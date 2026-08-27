@@ -5,7 +5,6 @@ from typing import Literal
 from pydantic import BaseModel, Field
 from zhiban.memory.service import MemoryService
 from zhiban.memory.types import resolve_category
-from zhiban.memory.validator import value_looks_malformed
 from zhiban.tools.base import ToolContext, ToolResult
 from zhiban.tools.spec import ToolSpec
 
@@ -30,12 +29,8 @@ class AddMemoryInput(BaseModel):
     fact: str = Field(
         min_length=1,
         max_length=500,
-        description="一条完整、自然的事实陈述，主语用「用户」，如「用户不喜欢吃辣」",
+        description="一条完整、自然的事实陈述，主语用「用户」，如「用户不喜欢吃辣」。只填这一个字段即可，不要拆成 subject/predicate/value。",
     )
-    subject: str = Field(default="", max_length=80)
-    predicate: str = Field(default="", max_length=80)
-    value: str = Field(default="", max_length=500)
-    negated: bool = Field(default=False, description="是否为否定事实（如「不喜欢」）")
 
 
 class ListMemoryInput(BaseModel):
@@ -80,9 +75,8 @@ class MemoryAddTool:
 
     async def execute(self, ctx: ToolContext, args: AddMemoryInput) -> ToolResult:
         from zhiban.db.models import Memory
-        from zhiban.memory.ids import conflict_key, memory_fingerprint
-        from zhiban.memory.normalize import normalize_text
         from zhiban.memory.ids import fact_conflict_key, fact_fingerprint
+        from zhiban.memory.normalize import normalize_text
         from zhiban.memory.types import MemoryStatus, SourceKind
 
         content = normalize_text(args.fact)
@@ -98,10 +92,10 @@ class MemoryAddTool:
             user_id=ctx.user_id,
             memory_type=args.memory_type,
             category=category,
-            subject=normalize_text(args.subject),
-            predicate=normalize_text(args.predicate),
-            value=normalize_text(args.value),
-            negated=args.negated,
+            subject="",
+            predicate="",
+            value="",
+            negated=False,
             content=content,
             source_kind=SourceKind.explicit,
             status=MemoryStatus.active,
