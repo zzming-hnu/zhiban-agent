@@ -71,27 +71,17 @@ async def create_memory(
     session: DbSession,
 ) -> MemoryView:
     """Explicitly create a memory (user-initiated, confidence=1.0)."""
-    from zhiban.memory.ids import conflict_key, memory_fingerprint
+    from zhiban.memory.ids import fact_conflict_key, fact_fingerprint
     from zhiban.memory.normalize import normalize_text
     from zhiban.memory.types import MemoryStatus, SourceKind
 
-    fingerprint = memory_fingerprint(
-        user_id=principal.user_id,
-        memory_type=body.memory_type,
-        subject=body.subject,
-        predicate=body.predicate,
-        value=body.value,
-        negated=body.negated,
+    fingerprint = fact_fingerprint(
+        user_id=principal.user_id, memory_type=body.memory_type, fact=body.fact
     )
-    ckey = conflict_key(
-        user_id=principal.user_id,
-        memory_type=body.memory_type,
-        subject=body.subject,
-        predicate=body.predicate,
+    ckey = fact_conflict_key(
+        user_id=principal.user_id, memory_type=body.memory_type, fact=body.fact
     )
-    predicate = normalize_text(body.predicate)
-    if body.negated and not predicate.startswith("不"):
-        predicate = f"不{predicate}"
+    content = normalize_text(body.fact)
     memory = Memory(
         user_id=principal.user_id,
         memory_type=body.memory_type,
@@ -100,7 +90,7 @@ async def create_memory(
         predicate=normalize_text(body.predicate),
         value=normalize_text(body.value),
         negated=body.negated,
-        content=f"{body.subject} {predicate} {body.value}".strip(),
+        content=content,
         source_kind=SourceKind.explicit,
         status=MemoryStatus.active,
         confidence=1.0,

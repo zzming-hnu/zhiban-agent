@@ -27,9 +27,14 @@ class AddMemoryInput(BaseModel):
         default="other",
         description="用户分类：basic_info/communication_taboo/communication_preference/other",
     )
-    subject: str = Field(min_length=1, max_length=80)
-    predicate: str = Field(min_length=1, max_length=80)
-    value: str = Field(min_length=1, max_length=500)
+    fact: str = Field(
+        min_length=1,
+        max_length=500,
+        description="一条完整、自然的事实陈述，主语用「用户」，如「用户不喜欢吃辣」",
+    )
+    subject: str = Field(default="", max_length=80)
+    predicate: str = Field(default="", max_length=80)
+    value: str = Field(default="", max_length=500)
     negated: bool = Field(default=False, description="是否为否定事实（如「不喜欢」）")
 
 
@@ -77,39 +82,18 @@ class MemoryAddTool:
         from zhiban.db.models import Memory
         from zhiban.memory.ids import conflict_key, memory_fingerprint
         from zhiban.memory.normalize import normalize_text
+        from zhiban.memory.ids import fact_conflict_key, fact_fingerprint
         from zhiban.memory.types import MemoryStatus, SourceKind
 
-        # Reject malformed values early — same check the implicit extractor
-        # path uses, so explicit tool calls cannot bypass it.
-        if value_looks_malformed(
-            value=args.value, subject=args.subject, predicate=args.predicate
-        ):
-            return ToolResult(
-                ok=False,
-                summary="value 不能包含 subject 或 predicate 的重复拼接，请只填纯值",
-                error_code="malformed_value",
-            )
-
-        fingerprint = memory_fingerprint(
-            user_id=ctx.user_id,
-            memory_type=args.memory_type,
-            subject=args.subject,
-            predicate=args.predicate,
-            value=args.value,
-            negated=args.negated,
+        content = normalize_text(args.fact)
+        fingerprint = fact_fingerprint(
+            user_id=ctx.user_id, memory_type=args.memory_type, fact=args.fact
         )
-        ckey = conflict_key(
-            user_id=ctx.user_id,
-            memory_type=args.memory_type,
-            subject=args.subject,
-            predicate=args.predicate,
+        ckey = fact_conflict_key(
+            user_id=ctx.user_id, memory_type=args.memory_type, fact=args.fact
         )
         # Deterministic category resolution (identity/person/event -> basic_info).
         category = resolve_category(args.memory_type, args.category)
-        render_predicate = normalize_text(args.predicate)
-        if args.negated and not render_predicate.startswith("不"):
-            render_predicate = f"不{render_predicate}"
-        content = f"{args.subject} {render_predicate} {args.value}".strip()
         memory = Memory(
             user_id=ctx.user_id,
             memory_type=args.memory_type,

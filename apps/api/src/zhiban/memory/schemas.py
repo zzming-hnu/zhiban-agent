@@ -20,9 +20,12 @@ class MemoryCandidatePayload(ApiModel):
     category: Literal["basic_info", "communication_taboo", "communication_preference", "other"] = (
         "other"
     )
-    subject: str = Field(min_length=1, max_length=80)
-    predicate: str = Field(min_length=1, max_length=80)
-    value: str = Field(min_length=1, max_length=500)
+    # Primary fact (natural language). The structured subject/predicate/value
+    # fields below are optional and only kept for backward compatibility.
+    fact: str = Field(min_length=1, max_length=500)
+    subject: str = Field(default="", max_length=80)
+    predicate: str = Field(default="", max_length=80)
+    value: str = Field(default="", max_length=500)
     negated: bool = False
     source_message_ids: list[uuid.UUID] = Field(min_length=1, max_length=8)
     evidence_quote: str = Field(min_length=1, max_length=240)
@@ -64,9 +67,10 @@ class CreateMemoryRequest(ApiModel):
     category: Literal["basic_info", "communication_taboo", "communication_preference", "other"] = (
         "other"
     )
-    subject: str = Field(min_length=1, max_length=80)
-    predicate: str = Field(min_length=1, max_length=80)
-    value: str = Field(min_length=1, max_length=500)
+    fact: str = Field(min_length=1, max_length=500)
+    subject: str = Field(default="", max_length=80)
+    predicate: str = Field(default="", max_length=80)
+    value: str = Field(default="", max_length=500)
     negated: bool = False
 
 

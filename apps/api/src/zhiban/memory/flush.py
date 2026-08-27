@@ -92,6 +92,7 @@ async def flush_conversation_memory(
         payload = MemoryCandidatePayload(
             memory_type=candidate.memory_type,
             category=candidate.category,
+            fact=candidate.fact,
             subject=candidate.subject,
             predicate=candidate.predicate,
             value=candidate.value,

@@ -64,6 +64,28 @@ def conflict_key(
     return _sha256(material)
 
 
+def fact_fingerprint(*, user_id: uuid.UUID, memory_type: str, fact: str) -> str:
+    """Fingerprint of a natural-language fact (used for active-memory dedupe).
+
+    ``SHA-256(user_id + type + normalized fact)``. Exact-text dedupe only: the
+    same sentence is deduped, while semantically-similar-but-worded-differently
+    facts are handled by the semantic (embedding) merge layer.
+    """
+    material = "\x1f".join([str(user_id), memory_type, normalize_text(fact)])
+    return _sha256(material)
+
+
+def fact_conflict_key(*, user_id: uuid.UUID, memory_type: str, fact: str) -> str:
+    """Conflict key for a natural-language fact.
+
+    Uses ``user_id + memory_type + normalized fact`` so that the exact same fact
+    maps to one slot. Semantic evolution ("不喜欢吃辣" -> "喜欢吃辣") is resolved
+    by the embedding-similarity merge layer, not this exact-text key.
+    """
+    material = "\x1f".join([str(user_id), memory_type, normalize_text(fact)])
+    return _sha256(material)
+
+
 def candidate_idempotency_key(
     *,
     user_id: uuid.UUID,

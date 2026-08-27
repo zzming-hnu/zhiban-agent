@@ -6,7 +6,13 @@ from datetime import UTC, datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from zhiban.db.models import Memory, MemoryCandidate
 from zhiban.llm.embedding import EmbeddingAdapter
-from zhiban.memory.ids import candidate_idempotency_key, conflict_key, memory_fingerprint
+from zhiban.memory.ids import (
+    candidate_idempotency_key,
+    conflict_key,
+    fact_conflict_key,
+    fact_fingerprint,
+    memory_fingerprint,
+)
 from zhiban.memory.normalize import normalize_text
 from zhiban.memory.repository import MemoryRepository
 from zhiban.memory.schemas import MemoryCandidatePayload
@@ -36,13 +42,17 @@ class MemoryService:
             return None
 
     def _render_content(self, candidate: MemoryCandidatePayload) -> str:
+        # Prefer the natural-language fact when provided (new extractor output).
+        fact = normalize_text(getattr(candidate, "fact", "") or "")
+        if fact:
+            return fact
+        # Legacy fallback: assemble from subject/predicate/value. Negation is
+        # rendered as a prefix on the predicate ("不喜欢") rather than being
+        # baked into the value.
         subject = normalize_text(candidate.subject)
         predicate = normalize_text(candidate.predicate)
         value = normalize_text(candidate.value)
-        # Negation is rendered as a prefix on the predicate ("不喜欢") rather
-        # than being baked into the value, so the content reads naturally and
-        # the predicate stays stable for slot-conflict detection.
-        if candidate.negated and not predicate.startswith("不"):
+        if candidate.negated and predicate and not predicate.startswith("不"):
             predicate = f"不{predicate}"
         return f"{subject} {predicate} {value}".strip()
 
@@ -60,20 +70,31 @@ class MemoryService:
 
         Returns ``(decision, candidate_record)``; ``decision`` is None when rejected.
         """
-        fingerprint = memory_fingerprint(
-            user_id=user_id,
-            memory_type=candidate.memory_type,
-            subject=candidate.subject,
-            predicate=candidate.predicate,
-            value=candidate.value,
-            negated=candidate.negated,
-        )
-        ckey = conflict_key(
-            user_id=user_id,
-            memory_type=candidate.memory_type,
-            subject=candidate.subject,
-            predicate=candidate.predicate,
-        )
+        fact = getattr(candidate, "fact", "") or ""
+        if fact:
+            # Natural-language fact is the primary key for dedupe/conflict.
+            fingerprint = fact_fingerprint(
+                user_id=user_id, memory_type=candidate.memory_type, fact=fact
+            )
+            ckey = fact_conflict_key(
+                user_id=user_id, memory_type=candidate.memory_type, fact=fact
+            )
+        else:
+            # Legacy fallback: structured subject/predicate/value.
+            fingerprint = memory_fingerprint(
+                user_id=user_id,
+                memory_type=candidate.memory_type,
+                subject=candidate.subject,
+                predicate=candidate.predicate,
+                value=candidate.value,
+                negated=candidate.negated,
+            )
+            ckey = conflict_key(
+                user_id=user_id,
+                memory_type=candidate.memory_type,
+                subject=candidate.subject,
+                predicate=candidate.predicate,
+            )
         payload = candidate.model_dump(mode="json")
         source_ids_str: list[str] = payload["source_message_ids"]
         idem_key = candidate_idempotency_key(
