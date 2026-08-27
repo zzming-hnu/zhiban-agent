@@ -42,16 +42,6 @@ const CATEGORY_ORDER = [
   "other",
 ];
 
-function formatTime(iso: string | null | undefined): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(
-    d.getHours(),
-  )}:${pad(d.getMinutes())}`;
-}
-
 export default function MemoriesPage() {
   const router = useRouter();
   const [user, setUser] = useState<{ display_name: string } | null>(null);
@@ -243,13 +233,10 @@ export default function MemoriesPage() {
                               <div className="flex items-start justify-between gap-4">
                                 <div className="flex-1">
                                   <p className="text-sm text-foreground">{m.content}</p>
-                                  <div className="mt-2 flex items-center gap-3">
+                                  <div className="mt-2 flex items-center gap-2">
                                     <span className="text-xs text-muted-foreground">
                                       来源：
                                       {m.source_kind === "explicit" ? "明确要求" : "自动提取"}
-                                    </span>
-                                    <span className="text-xs text-muted-foreground">
-                                      更新于 {formatTime(m.updated_at)}
                                     </span>
                                   </div>
                                 </div>
