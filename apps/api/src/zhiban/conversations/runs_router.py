@@ -324,7 +324,8 @@ async def _inject_retrieved_memories(
         for scored in results:
             if scored.memory.source_kind == "explicit":
                 continue
-            retrieved_lines.append(f"- {scored.memory.content}")
+            line = await _render_memory_with_history(session, scored.memory)
+            retrieved_lines.append(line)
             retrieved_details.append(
                 {
                     "content": scored.memory.content,
@@ -381,8 +382,38 @@ async def _load_explicit_memories(session: AsyncSession, user_id: uuid.UUID) -> 
     )
     lines: list[str] = []
     for memory in result.scalars():
-        lines.append(f"- {memory.content}")
+        line = await _render_memory_with_history(session, memory)
+        lines.append(line)
     return lines
+
+
+async def _render_memory_with_history(session: AsyncSession, memory: Memory) -> str:
+    """Render a memory line, appending its evolution history if any.
+
+    When a memory supersedes older memories (via ``superseded_by_id`` pointing
+    back to it), we surface the previous values so the model can answer
+    "you used to X, now Y" without hallucinating a timeline. The history is
+    deterministic (from the superseded chain), not inferred by the model.
+    """
+    from zhiban.db.models import Memory
+
+    line = f"- {memory.content}"
+    # Find memories this one superseded (old -> this, via superseded_by_id).
+    result = await session.execute(
+        select(Memory)
+        .where(
+            Memory.user_id == memory.user_id,
+            Memory.superseded_by_id == memory.id,
+            Memory.status == "superseded",
+        )
+        .order_by(Memory.updated_at.asc())
+    )
+    superseded = list(result.scalars())
+    if not superseded:
+        return line
+
+    previous = "、".join(m.content for m in superseded)
+    return f"{line}（此前为：{previous}）"
 
 
 async def _finalize_run(
