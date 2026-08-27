@@ -81,6 +81,9 @@ services:
       # Mount the API source tree so backend changes can be applied by
       # `git pull` + `docker compose restart app` without rebuilding the image.
       - /home/admin/zhiban-agent/apps/api/src:/app/apps/api/src
+      # Mount the migrations too, so schema changes (alembic) also apply on
+      # restart without rebuilding the image.
+      - /home/admin/zhiban-agent/apps/api/migrations:/app/apps/api/migrations
     depends_on:
       postgres:
         condition: service_healthy
