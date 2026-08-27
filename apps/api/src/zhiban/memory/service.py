@@ -108,7 +108,7 @@ class MemoryService:
             return None, record
 
         # Decide.
-        decision = await self._decide(
+        decision, supersede_target = await self._decide(
             user_id=user_id, candidate=candidate, fingerprint=fingerprint, ckey=ckey
         )
 
@@ -142,8 +142,39 @@ class MemoryService:
             record.decision = Decision.add
             record.target_memory_id = memory.id
         elif decision == Decision.update:
+            # Same slot (type+subject+predicate) but a new value: the user's fact
+            # evolved. Persist the new fact as active and mark the old one as
+            # superseded, linking them via superseded_by_id so the evolution chain
+            # is preserved (supports "you used to ... now ..." recall).
+            content = self._render_content(candidate)
+            category = resolve_category(candidate.memory_type, candidate.category)
+            memory = Memory(
+                user_id=user_id,
+                memory_type=candidate.memory_type,
+                category=category,
+                subject=normalize_text(candidate.subject),
+                predicate=normalize_text(candidate.predicate),
+                value=normalize_text(candidate.value),
+                content=content,
+                source_kind=source_kind,
+                status=MemoryStatus.active,
+                confidence=candidate.confidence,
+                importance=candidate.importance,
+                fingerprint=fingerprint,
+                conflict_key=ckey,
+                embedding=await self._embed(content),
+                source_message_ids=source_ids_str,
+                evidence_quote=candidate.evidence_quote,
+                expires_at=candidate.valid_until,
+                last_evidenced_at=datetime.now(UTC),
+            )
+            await self.repo.add(memory)
+            if supersede_target is not None:
+                supersede_target.status = MemoryStatus.superseded
+                supersede_target.superseded_by_id = memory.id
             record.status = "accepted"
             record.decision = Decision.update
+            record.target_memory_id = memory.id
         elif decision == Decision.ignore:
             record.status = "rejected"
             record.reject_reason = RejectReason.duplicate
@@ -163,19 +194,25 @@ class MemoryService:
         candidate: MemoryCandidatePayload,
         fingerprint: str,
         ckey: str,
-    ) -> str:
-        """Decide add/update/ignore based on dedupe and conflict rules."""
+    ) -> tuple[str, Memory | None]:
+        """Decide add/update/ignore based on dedupe and conflict rules.
+
+        Returns ``(decision, supersede_target)``: when the decision is ``update``,
+        ``supersede_target`` is the active memory that the new value supersedes.
+        """
         # Exact duplicate (same fingerprint) -> ignore.
         exact = await self.repo.get_active_by_fingerprint(user_id=user_id, fingerprint=fingerprint)
         if exact is not None:
-            return Decision.ignore
+            return Decision.ignore, None
 
-        # Same conflict slot (same type+subject+predicate, different value) -> update/supersede.
+        # Same conflict slot (same type+subject+predicate, different value) ->
+        # update/supersede. Supersede the most recently updated active memory.
         conflicts = await self.repo.get_active_by_conflict_key(user_id=user_id, conflict_key=ckey)
         if conflicts:
-            return Decision.update
+            target = max(conflicts, key=lambda m: m.updated_at)
+            return Decision.update, target
 
-        return Decision.add
+        return Decision.add, None
 
     async def get_memory(self, *, user_id: uuid.UUID, memory_id: uuid.UUID) -> Memory | None:
         return await self.repo.get(user_id=user_id, memory_id=memory_id)

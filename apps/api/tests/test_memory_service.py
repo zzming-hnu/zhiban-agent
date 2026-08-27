@@ -120,11 +120,14 @@ async def test_slot_conflict_updates(session: AsyncSession, clean_database: None
     )
     assert d1 == Decision.add
 
+    # Capture the old memory id before the update.
+    old_memory_id = (await service.list_memories(user_id=user.id))[0].id
+
     # Same slot (type+subject+predicate) different value -> update.
     cand2 = _candidate(value="多糖咖啡")
     cand2.source_message_ids = [mid]
     cand2.evidence_quote = "我现在喜欢多糖咖啡"
-    d2, _ = await service.process_candidate(
+    d2, record2 = await service.process_candidate(
         user_id=user.id,
         candidate=cand2,
         source_kind="explicit",
@@ -133,6 +136,17 @@ async def test_slot_conflict_updates(session: AsyncSession, clean_database: None
         available_message_texts={mid: "我现在喜欢多糖咖啡"},
     )
     assert d2 == Decision.update
+    assert record2.target_memory_id is not None
+
+    # The old memory is superseded and points to the new one (evolution chain).
+    active = await service.list_memories(user_id=user.id)
+    assert len(active) == 1
+    assert active[0].value == "多糖咖啡"
+    assert active[0].status == "active"
+
+    old = await service.repo.get(user_id=user.id, memory_id=old_memory_id)
+    assert old.status == "superseded"
+    assert old.superseded_by_id == active[0].id
 
 
 @pytest.mark.integration
