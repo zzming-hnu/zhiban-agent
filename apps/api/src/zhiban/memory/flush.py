@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from zhiban.db.models import Conversation, Message
 from zhiban.llm.base import LLMAdapter
-from zhiban.memory.extractor import EXTRACTOR_VERSION, extract_candidates
+from zhiban.memory.extractor import EXTRACTOR_VERSION, detect_explicit_request, extract_candidates
 from zhiban.memory.schemas import MemoryCandidatePayload
 from zhiban.memory.service import MemoryService
 
@@ -55,8 +55,20 @@ async def flush_conversation_memory(
     if not messages:
         return True
 
-    # Extract candidates from user messages.
-    indexed = [(i, m.content) for i, m in enumerate(messages)]
+    # Extract candidates from user messages. Skip messages that are explicit
+    # "remember this" requests: those are already handled synchronously by the
+    # MemoryAgent via the memory.add tool, so re-extracting them here would
+    # produce a duplicate (implicit copy) of the same fact.
+    indexed = [
+        (i, m.content)
+        for i, m in enumerate(messages)
+        if not detect_explicit_request(m.content)
+    ]
+    if not indexed:
+        # Nothing to implicitly extract, but still advance the cursor.
+        conv.memory_flushed_through_message_id = messages[-1].id
+        await session.commit()
+        return True
     try:
         candidates = await extract_candidates(llm, indexed)
     except Exception:  # noqa: BLE001 - flush is best-effort
