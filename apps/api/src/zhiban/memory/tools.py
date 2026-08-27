@@ -3,6 +3,7 @@
 from typing import Literal
 
 from pydantic import BaseModel, Field
+from zhiban.llm.base import LLMAdapter
 from zhiban.memory.service import MemoryService
 from zhiban.memory.types import resolve_category
 from zhiban.tools.base import ToolContext, ToolResult
@@ -70,15 +71,90 @@ class MemoryAddTool:
         retry_policy="never",
     )
 
-    def __init__(self, service: MemoryService) -> None:
+    def __init__(self, service: MemoryService, llm: LLMAdapter | None = None) -> None:
         self._service = service
+        self._llm = llm
 
     async def execute(self, ctx: ToolContext, args: AddMemoryInput) -> ToolResult:
         from zhiban.db.models import Memory
         from zhiban.memory.ids import fact_conflict_key, fact_fingerprint
         from zhiban.memory.normalize import normalize_text
+        from zhiban.memory.reconcile import reconcile_memory
         from zhiban.memory.types import MemoryStatus, SourceKind
 
+        # Semantic reconcile: let the model decide add/update/supersede/ignore
+        # against existing memories (model proposes, we validate below).
+        decision = await reconcile_memory(
+            self._service._session,
+            user_id=ctx.user_id,
+            new_fact=args.fact,
+            llm=self._llm,
+        ) if self._llm is not None else None
+
+        if decision is not None and decision.action == "ignore":
+            # Duplicate: do nothing, report as already remembered.
+            return ToolResult(
+                ok=True,
+                data={"memory_id": str(decision.target.id) if decision.target else None},
+                summary="这条信息已经记住过了，无需重复记录",
+            )
+
+        if decision is not None and decision.action == "update" and decision.target is not None:
+            # Update the existing memory's content in place.
+            new_content = normalize_text(decision.new_fact or args.fact)
+            decision.target.content = new_content
+            decision.target.value = new_content
+            decision.target.fingerprint = fact_fingerprint(
+                user_id=ctx.user_id, memory_type=args.memory_type, fact=new_content
+            )
+            decision.target.embedding = None  # re-embed later
+            await self._service._session.commit()
+            return ToolResult(
+                ok=True,
+                data={"memory_id": str(decision.target.id)},
+                summary=f"已更新记忆：{new_content}",
+            )
+
+        if decision is not None and decision.action == "supersede" and decision.target is not None:
+            # The fact reversed: mark the old memory superseded and add the new one.
+            decision.target.status = MemoryStatus.superseded
+            content = normalize_text(args.fact)
+            fingerprint = fact_fingerprint(
+                user_id=ctx.user_id, memory_type=args.memory_type, fact=args.fact
+            )
+            ckey = fact_conflict_key(
+                user_id=ctx.user_id, memory_type=args.memory_type, fact=args.fact
+            )
+            category = resolve_category(args.memory_type, args.category)
+            memory = Memory(
+                user_id=ctx.user_id,
+                memory_type=args.memory_type,
+                category=category,
+                subject="",
+                predicate="",
+                value="",
+                negated=False,
+                content=content,
+                source_kind=SourceKind.explicit,
+                status=MemoryStatus.active,
+                confidence=1.0,
+                importance=0.5,
+                fingerprint=fingerprint,
+                conflict_key=ckey,
+                embedding=await self._service._embed(content),
+                source_message_ids=[],
+                evidence_quote="",
+            )
+            await self._service.repo.add(memory)
+            decision.target.superseded_by_id = memory.id
+            await self._service._session.commit()
+            return ToolResult(
+                ok=True,
+                data={"memory_id": str(memory.id)},
+                summary=f"已更新偏好：{content}",
+            )
+
+        # Default: add a new memory.
         content = normalize_text(args.fact)
         fingerprint = fact_fingerprint(
             user_id=ctx.user_id, memory_type=args.memory_type, fact=args.fact

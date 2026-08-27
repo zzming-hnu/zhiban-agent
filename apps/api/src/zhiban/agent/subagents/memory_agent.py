@@ -47,7 +47,7 @@ class MemoryAgent(ToolCallingSubAgent):
     def build_registry(self) -> ToolRegistry:
         registry = ToolRegistry()
         registry.register(MemoryListTool(self._service))
-        registry.register(MemoryAddTool(self._service))
+        registry.register(MemoryAddTool(self._service, self._llm))
         registry.register(MemoryUpdateTool(self._service))
         registry.register(MemoryDeleteTool(self._service))
         registry.register(MemoryConsolidateTool(self._service))
