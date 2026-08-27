@@ -131,38 +131,59 @@ DeepSeek 要求 tool name 匹配 `^[a-zA-Z0-9_-]+$`（不允许点号），但�
 
 ## 5. 记忆系统（SPEC-005）
 
-### 5.1 候选提取（`memory/extractor.py`）
+> 记忆系统经历了三期演进：一期「候选提取→校验→决策→检索→治理」闭环；二期「演化链 + 整合」；三期「自然语言 fact 范式 + 语义去重 + reconcile」。以下为三期后的最终实现。
 
-- LLM 输出严格 JSON 数组
-- 提取规则：只从用户消息提取、排除敏感信息、evidence_quote 必须能在原文找到
-- **两层字段**：`memory_type`（8 类）+ `category`（4 类），prompt 明确区分两者防止混淆
+### 5.1 自然语言 fact 范式（`memory/extractor.py`）
+
+- LLM 输出严格 JSON 数组，核心字段是**一句自然语言 `fact`**（如「用户不喜欢吃辣」），而非易出错的 `subject/predicate/value` 三元组。
+- 三元组字段降级为可选（默认空），仅向后兼容。
+- 提取规则：只从用户消息提取、排除敏感信息、evidence_quote 必须能在原文找到。
+- 两层分类字段：`memory_type`（8 类）+ `category`（4 类）。
 
 ### 5.2 确定性校验（`memory/validator.py`）
 
-- 证据来源在批次内、evidence_quote 命中原文
-- 敏感内容（密码/token/验证码）不进隐式记忆
-- 置信度阈值（habit 0.80，其他 0.65）
-- **值格式校验** `value_looks_malformed()`：防止 LLM 把 subject+predicate 重复塞进 value（如「称呼 要求被称呼为 称呼 要求被称呼为zymonzhang」）
+- 证据来源在批次内、evidence_quote 命中原文。
+- 敏感内容（密码/token/验证码）不进隐式记忆。
+- 置信度阈值（habit 0.80，其他 0.65）。
 
-### 5.3 决策（`memory/service.py`）
+### 5.3 语义去重（`memory/dedup.py`）
 
-- 精确重复（同 fingerprint）→ ignore
-- 同 conflict slot（同 type+subject+predicate 不同 value）→ update
-- 否则 → add
+- `fact_similarity(a, b)`：对称词法相似度（jieba），阈值 `0.80`。
+- **否定极性判断**：一方含否定词（不/没/无/别/非等）而另一方不含，直接判 0——区分「喜欢吃辣」（同义，去重）与「不喜欢吃辣」（反义，保留），防止正反偏好被误合并。
+- 应用场景：写入时（flush 自动提取前）+ 定期（consolidate 整合）。
 
-### 5.4 检索（`memory/search.py`）
+### 5.4 主动记忆语义调和（`memory/reconcile.py`）
 
-- **混合检索**：向量（pgvector cosine）+ lexical（ILIKE）+ 时间衰减
-- Embedding 不可用 → 纯 lexical 降级
+用户明确说「记住 X」时，把新 fact + 现有相关记忆（词法粗筛 top 5）喂给模型，判断四选一：
 
-### 5.5 记忆注入（`runs_router.py` `_inject_retrieved_memories`）
+| action | 含义 |
+|---|---|
+| `add` | 新增 |
+| `update` | 更新旧值 |
+| `supersede` | 正反取代（「喜欢」→「不喜欢」） |
+| `ignore` | 重复忽略 |
 
-- explicit 记忆：全量注入 `[用户的核心信息与偏好（务必遵循）]`
-- implicit 记忆：按相关性召回 `[与当前问题相关的用户记忆（仅供参考）]`
+**模型只提议，工程层裁决**：校验 `target_id` 必须真实存在且属于该用户，否则回退 `add`，杜绝幻觉误删。
 
-### 5.6 Memory Flush
+### 5.5 演化链 + 整合（`memory/service.py` + `consolidate.py`）
 
-压缩前先把稳定记忆 flush 到记忆库（`memory/flush.py`），通过 Worker job 异步执行。
+- 记忆冲突/正反更新时，旧值标记 `superseded` 并经 `superseded_by_id` 指向新值，保留演化历史。
+- `memory.consolidate` 后台任务：确定性语义去重（Phase 1，无需 LLM）+ LLM 提议冗余/矛盾（Phase 2），自动（记忆数≥15）与主动（「整理记忆」）双触发。
+
+### 5.6 检索（`memory/search.py`）
+
+- **混合检索**：向量（pgvector cosine）+ lexical（jieba/BM25）+ 时间衰减。
+- Embedding 不可用 → 纯 lexical 降级。
+
+### 5.7 记忆注入（`runs_router.py` `_inject_retrieved_memories`）
+
+- explicit 记忆：全量注入 `[用户的核心信息与偏好（务必遵循）]`。
+- implicit 记忆：按相关性召回 `[与当前问题相关的用户记忆（仅供参考）]`。
+- 注入时附带演化历史（「此前为：X」），支持「你之前……现在……」的时间追问。
+
+### 5.8 Memory Flush
+
+压缩前先把稳定记忆 flush 到记忆库（`memory/flush.py`），通过 Worker job 异步执行；写入前做语义去重，跳过显式请求消息。
 
 ## 6. 待办与提醒（SPEC-006 + 周期扩展）
 
@@ -244,6 +265,7 @@ Next.js 16 App Router + React 19 + Tailwind v4 + shadcn/ui + sonner（toast）�
 | job_type | handler | 说明 |
 |---|---|---|
 | `memory.extract` | `handle_memory_extract` | 记忆抽取 |
+| `memory.consolidate` | `handle_memory_consolidate` | 记忆整合（去冗余 + 消解矛盾） |
 | `reminder.scan` | `handle_reminder_scan` | 扫描 due 提醒 |
 | `reminder.deliver` | `handle_reminder_deliver` | 单条提醒投递 |
 
