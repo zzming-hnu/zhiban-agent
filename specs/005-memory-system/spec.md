@@ -6,7 +6,7 @@
 |---|---|
 | Spec ID | `SPEC-005` |
 | 状态 | `implemented` |
-| 版本 | `1.1.0` |
+| 版本 | `1.2.0` |
 | 创建日期 | 2026-08-19 |
 | 最后更新 | 2026-08-27 |
 | 实施阶段 | `06-implementation-plan.md` 阶段 5 |
@@ -231,6 +231,9 @@ apps/api/src/zhiban/
 | Prompt 三层结构 | 借鉴小 Q：base（身份+行为铁律）+ tool_use（工具路由）+ memory_rules（记忆行为规则），每次 query 组装 |
 | 记忆演化链（二期） | 槽位冲突更新时不再覆盖丢失：新值以 active 落库，旧值标记 `superseded` 并经 `superseded_by_id` 指向新记忆，保留演化历史（支持「你之前……现在……」追问）。见 `docs/progress/005b-memory-evolution-consolidation.md` |
 | 记忆整合（二期） | 新增 `memory.consolidate` 后台任务：LLM 提议冗余/矛盾（保留谁、淘汰谁），工程层确定性 apply（复用 `superseded_by_id`）。自动（记忆数≥15）与主动（「整理记忆」）双触发。LLM 只提议、不改库、不新造内容 |
+| 自然语言 fact 范式（三期） | 抽取从「三元组」改为输出一句自然语言 `fact`（如「用户不喜欢吃辣」），`subject/predicate/value` 降级为可选，根治结构化解析畸形（自我引用、否定错位）。见 `docs/progress/005c-memory-fact-semantic-dedup.md` |
+| 语义去重（三期） | 新增 `memory/dedup.py`：词法相似度（jieba）+ 否定极性判断，阈值 0.80。写入时（flush）与定期（consolidate）双触发，杜绝「主动/自动提取重复」与「正反偏好误合并」 |
+| 主动记忆语义调和（三期） | 新增 `memory/reconcile.py`：主动记忆时模型判断 `add/update/supersede/ignore`，工程层校验 target 后执行，实现正反偏好演化 |
 
 ## 14. 开放问题
 
