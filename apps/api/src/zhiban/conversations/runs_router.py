@@ -24,7 +24,7 @@ from zhiban.conversations.runs import EventBuffer, RunRepository, build_snapshot
 from zhiban.conversations.stream import sse_event
 from zhiban.core.config import Settings, get_settings
 from zhiban.core.token_budget import build_token_budget
-from zhiban.db.models import AgentRun, Conversation, Message
+from zhiban.db.models import AgentRun, Conversation, Memory, Message
 from zhiban.db.session import create_session_factory
 from zhiban.llm.base import ChatMessage, LLMAdapter
 from zhiban.llm.embedding import EmbeddingAdapter
@@ -370,8 +370,6 @@ async def _inject_retrieved_memories(
 
 async def _load_explicit_memories(session: AsyncSession, user_id: uuid.UUID) -> list[str]:
     """Load the user's explicit (core) memories for always-on injection."""
-    from zhiban.db.models import Memory
-
     result = await session.execute(
         select(Memory).where(
             Memory.user_id == user_id,
@@ -395,8 +393,6 @@ async def _render_memory_with_history(session: AsyncSession, memory: Memory) -> 
     "you used to X, now Y" without hallucinating a timeline. The history is
     deterministic (from the superseded chain), not inferred by the model.
     """
-    from zhiban.db.models import Memory
-
     line = f"- {memory.content}"
     # Find memories this one superseded (old -> this, via superseded_by_id).
     result = await session.execute(
