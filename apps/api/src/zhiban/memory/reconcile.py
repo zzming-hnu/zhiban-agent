@@ -19,7 +19,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from zhiban.db.models import Memory
 from zhiban.llm.base import ChatMessage, LLMAdapter
-from zhiban.memory.dedup import fact_similarity
+from zhiban.memory.lexical import lexical_similarity
+from zhiban.memory.normalize import normalize_text
 
 
 @dataclass(slots=True)
@@ -107,13 +108,18 @@ async def reconcile_memory(
     if not memories:
         return ReconcileDecision(action="add")
 
-    # Coarse filter: keep top_k by lexical similarity.
-    ranked = sorted(
-        memories,
-        key=lambda m: fact_similarity(new_fact, m.content),
-        reverse=True,
-    )
-    candidates = [m for m in ranked[:top_k] if fact_similarity(new_fact, m.content) > 0.0]
+    # Coarse filter: keep top_k by lexical similarity. NOTE: we use plain
+    # lexical overlap here (NOT dedup.fact_similarity, which zeroes out
+    # opposite-polarity pairs) because for reconcile we explicitly WANT the
+    # opposite-polarity candidate ("喜欢" vs "不喜欢") to reach the model so it
+    # can decide "supersede".
+    def _score(m: Memory) -> float:
+        na = normalize_text(new_fact)
+        nb = normalize_text(m.content)
+        return max(lexical_similarity(na, nb), lexical_similarity(nb, na))
+
+    ranked = sorted(memories, key=_score, reverse=True)
+    candidates = [m for m in ranked[:top_k] if _score(m) > 0.0]
     if not candidates:
         return ReconcileDecision(action="add")
 
