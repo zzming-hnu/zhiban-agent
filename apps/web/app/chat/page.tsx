@@ -153,6 +153,10 @@ export default function ChatPage() {
   async function handleSend() {
     if (!input.trim() || isStreaming || !activeConvId) return;
 
+    // Abort any previous in-flight stream before starting a new one to avoid
+    // EventSource / fetch conflicts on the same conversation.
+    abortRef.current?.abort();
+
     const userContent = input.trim();
     setInput("");
     setIsStreaming(true);
@@ -197,6 +201,7 @@ export default function ChatPage() {
           return updated;
         });
         setIsStreaming(false);
+        abortRef.current = null;
         loadConversations();
       },
       (err) => {
@@ -213,6 +218,7 @@ export default function ChatPage() {
           return updated;
         });
         setIsStreaming(false);
+        abortRef.current = null;
       },
       (tool, args) => {
         setMessages((prev) => {
