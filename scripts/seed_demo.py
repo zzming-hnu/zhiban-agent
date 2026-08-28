@@ -17,7 +17,7 @@ from zhiban.core.config import Settings  # noqa: E402
 from zhiban.core.resources import AppResources  # noqa: E402
 from zhiban.db.models import Memory, Todo, User  # noqa: E402
 from zhiban.db.session import create_session_factory  # noqa: E402
-from zhiban.memory.ids import conflict_key, memory_fingerprint  # noqa: E402
+from zhiban.memory.ids import fact_conflict_key, fact_fingerprint  # noqa: E402
 
 DEMO_USERS = [
     {"email": "demo-a@example.com", "password": "demo12345", "display_name": "演示用户A"},
@@ -47,29 +47,28 @@ async def seed() -> None:
             session.add(user)
             await session.flush()
 
-            # 演示记忆：偏好
-            fingerprint = memory_fingerprint(
+            # 演示记忆：偏好（自然语言 fact 范式）
+            fact = "用户喜欢简洁的中文回答"
+            fingerprint = fact_fingerprint(
                 user_id=user.id,
                 memory_type="preference",
-                subject="self",
-                predicate="喜欢",
-                value="简洁的中文回答",
+                fact=fact,
             )
-            ckey = conflict_key(
+            ckey = fact_conflict_key(
                 user_id=user.id,
                 memory_type="preference",
-                subject="self",
-                predicate="喜欢",
+                fact=fact,
             )
             session.add(
                 Memory(
                     user_id=user.id,
                     memory_type="preference",
                     category="communication_preference",
-                    subject="self",
-                    predicate="喜欢",
-                    value="简洁的中文回答",
-                    content="self 喜欢 简洁的中文回答",
+                    subject="",
+                    predicate="",
+                    value="",
+                    negated=False,
+                    content=fact,
                     source_kind="explicit",
                     status="active",
                     confidence=1.0,
